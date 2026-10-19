@@ -34,7 +34,7 @@
 <div class="flex h-full">
   <Sidebar current={view} onselect={(next) => (view = next)} />
 
-  <main class="my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-l bg-panel shadow-panel">
+  <main class="my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg bg-panel shadow-panel">
     <header class="flex h-11 shrink-0 items-center px-3" data-tauri-drag-region>
       <SearchField bind:this={searchField} bind:value={query} />
     </header>

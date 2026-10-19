@@ -100,9 +100,12 @@
   --font-weight-medium: 520;
   --font-weight-strong: 650;
 
-  --radius-s: 6px;
-  --radius-m: 9px;
-  --radius-l: 14px;
+  /* Not s/m/l: rounded-s and rounded-l are already Tailwind's start-side and left-side utilities,
+     and both rules would be generated. */
+  --radius-*: initial;
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 14px;
 
   --spacing-sidebar: 220px;
   --spacing-titlebar: 52px;

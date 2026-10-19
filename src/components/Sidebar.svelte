@@ -10,7 +10,7 @@
     unknown
   >;
 
-  const item = "flex h-8 w-full items-center gap-2.5 rounded-m px-2.5 text-left transition-colors hover:bg-hover";
+  const item = "flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left transition-colors hover:bg-hover";
 </script>
 
 <nav class="flex w-sidebar shrink-0 flex-col px-2.5 pb-2.5">
@@ -45,7 +45,7 @@
       </button>
       <button
         class={[
-          "grid size-8 shrink-0 place-items-center rounded-m transition-colors hover:bg-hover",
+          "grid size-8 shrink-0 place-items-center rounded-md transition-colors hover:bg-hover",
           current === "settings" ? "bg-selected text-focus" : "text-dim",
         ]}
         aria-label={m().nav.settings}
