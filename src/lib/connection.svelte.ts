@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 /** Mirrors `FailureCode` in src-tauri/src/network.rs. */
-export type ConnectionFailure = "credentialStore" | "savedDevice" | "relayList" | "noRelay" | "tunnel";
+export type ConnectionFailure = "credentialStore" | "savedDevice" | "relayList" | "noRelay" | "tunnel" | "handshake";
 
 export type Connection =
   | { state: "direct" }

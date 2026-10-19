@@ -41,6 +41,7 @@ pub enum FailureCode {
     RelayList,
     NoRelay,
     Tunnel,
+    Handshake,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -66,6 +67,7 @@ impl ConnectError {
             Self::SavedDevice(_) => FailureCode::SavedDevice,
             Self::RelayList(_) => FailureCode::RelayList,
             Self::NoRelay(_) => FailureCode::NoRelay,
+            Self::Tunnel(TunnelError::Handshake) => FailureCode::Handshake,
             Self::TunnelConfig(_) | Self::Tunnel(_) => FailureCode::Tunnel,
         }
     }
