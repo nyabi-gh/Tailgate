@@ -1,10 +1,15 @@
 <script lang="ts">
   import { BookOpen, CircleAlert, CircleUserRound, Flame, Heart, Layers, Search, Settings } from "@lucide/svelte";
+  import { account } from "../lib/account.svelte";
   import { connection } from "../lib/connection.svelte";
   import { m } from "../lib/i18n/index.svelte";
   import { browseViews, type BrowseView, type View } from "../lib/views";
 
-  let { current, onselect }: { current: View; onselect: (view: View) => void } = $props();
+  let {
+    current,
+    onselect,
+    onaccount,
+  }: { current: View; onselect: (view: View) => void; onaccount: () => void } = $props();
 
   const icons = { search: Search, favorites: Heart, popular: Flame, pools: BookOpen, sets: Layers } satisfies Record<
     BrowseView,
@@ -14,6 +19,7 @@
   const item = "flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left transition-colors hover:bg-hover";
 
   const status = $derived(connection());
+  const user = $derived(account());
 </script>
 
 <nav class="flex w-sidebar shrink-0 flex-col px-2.5 pb-2.5">
@@ -67,9 +73,25 @@
     </button>
 
     <div class="flex items-center gap-1">
-      <button class={[item, "flex-1 text-ink/75"]} onclick={() => onselect("settings")}>
-        <CircleUserRound size={16} strokeWidth={1.75} class="text-dim" />
-        {m().account.signIn}
+      <button
+        class={[item, "min-w-0 flex-1", user.state === "rejected" ? "text-ink" : "text-ink/75"]}
+        title={user.state === "failed" ? m().account.failure[user.code] : undefined}
+        onclick={onaccount}
+      >
+        {#if user.state === "rejected" || user.state === "failed"}
+          <CircleAlert size={16} strokeWidth={1.75} class="shrink-0" />
+        {:else}
+          <CircleUserRound size={16} strokeWidth={1.75} class="shrink-0 text-dim" />
+        {/if}
+        <span class="truncate">
+          {#if user.state === "signedIn"}
+            {user.name}
+          {:else if user.state === "rejected"}
+            {m().account.signInAgain}
+          {:else}
+            {m().account.signIn}
+          {/if}
+        </span>
       </button>
       <button
         class={[

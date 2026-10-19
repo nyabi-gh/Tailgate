@@ -1,6 +1,7 @@
 import { mount } from "svelte";
 import "./styles/app.css";
 import App from "./App.svelte";
+import { watchAccount } from "./lib/account.svelte";
 import { watchConnection } from "./lib/connection.svelte";
 import { isMac, isTauri } from "./lib/platform";
 
@@ -11,6 +12,7 @@ if (isMac && isTauri) {
 
 if (isTauri) {
   watchConnection().catch((error) => console.error("could not read the connection state", error));
+  watchAccount().catch((error) => console.error("could not read the account state", error));
 }
 
 const target = document.getElementById("app");

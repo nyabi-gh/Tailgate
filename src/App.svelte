@@ -1,6 +1,7 @@
 <script lang="ts">
   import EmptySearch from "./components/EmptySearch.svelte";
   import SearchField from "./components/SearchField.svelte";
+  import SignInSheet from "./components/SignInSheet.svelte";
   import Sidebar from "./components/Sidebar.svelte";
   import { isMac } from "./lib/platform";
   import type { View } from "./lib/views";
@@ -8,6 +9,7 @@
   let view = $state<View>("search");
   let query = $state("");
   let searchField: SearchField;
+  let signInSheet: SignInSheet;
 
   function isTyping(target: EventTarget | null) {
     return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
@@ -35,7 +37,7 @@
 <svelte:window {onkeydown} />
 
 <div class="flex h-full">
-  <Sidebar current={view} onselect={(next) => (view = next)} />
+  <Sidebar current={view} onselect={(next) => (view = next)} onaccount={() => signInSheet.open()} />
 
   <main class="my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg bg-panel shadow-panel">
     <header class="flex h-11 shrink-0 items-center px-3" data-tauri-drag-region>
@@ -49,3 +51,5 @@
     </section>
   </main>
 </div>
+
+<SignInSheet bind:this={signInSheet} />
