@@ -1,3 +1,4 @@
+pub mod api;
 mod commands;
 mod media;
 pub mod network;

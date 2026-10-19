@@ -88,11 +88,11 @@ tailgate/
         wg.rs            gotatun Device에 smoltcp 패킷 큐를 꽂는 IpSend/IpRecv 어댑터
         netstack.rs      smoltcp 인터페이스, async TcpStream, 터널 안 DNS
         socks.rs         127.0.0.1 SOCKS5 서버, Route(Direct/Tunnel/Blocked)
-      error.rs           앱 오류 타입 (프런트엔드에는 오류 코드와 값만 보낸다. 문구는 프런트엔드 몫)
       api/
+        mod.rs           Api, ApiError(오류 코드. 프런트엔드에는 코드와 값만 보내고 문구는 프런트엔드 몫)
         client.rs        e621 요청, UA, Basic 인증, 스로틀, 재시도
-        models.rs        응답 모델 (serde)
-        endpoints.rs     posts, favorites, votes, users/me, autocomplete …
+        models.rs        e621 원본 응답(serde) → 앱 모델 정규화
+        endpoints.rs     posts, users/me, autocomplete, PostSearch(페이지 넘김) … (favorites, votes는 8번)
       blacklist.rs       파서 + 평가기
       account.rs         API 키 저장/삭제, 현재 사용자 상태
       settings.rs        설정 JSON (앱 설정 디렉터리)
@@ -125,19 +125,19 @@ tailgate/
 ## 5. 데이터 흐름
 
 ```
-Svelte 화면 → ipc.ts → invoke("search_posts", {tags, cursor})
-  → commands.rs → api::client
-      스로틀(tokio Mutex로 직렬화, 최소 1초 간격)
+Svelte 화면 → ipc.ts → invoke("next_page", {search})
+  → commands.rs → PostSearch(검색마다 하나) → api::client
+      스로틀(요청 시작 간격 최소 1초. 응답을 기다리는 동안 다음 요청이 막히지는 않는다)
       UA "Tailgate/<버전> (by <user> on e621)", Authorization: Basic …
-      401 → 로그아웃 상태 전환 / 429·503 → Retry-After 또는 지수 백오프(최대 3회) / 410 → 끝
-  → serde 디코딩 → 블랙리스트 평가 → { posts, hidden_count, next_cursor }
+      401 → 로그아웃 상태 전환 / 429·503 → Retry-After(30초 이하) 또는 1·2·4초 백오프(최대 3회) / 410 → 끝
+  → serde 디코딩·정규화 → 블랙리스트 평가 → { posts, hidden_count, done }
   → 화면이 <img src="media://localhost/data/…">로 표시 (Windows는 http://media.localhost/data/…)
   → media.rs가 앱 연결(SOCKS → 직접 또는 터널)로 static1에서 받아 응답
 ```
 
-- **커서**: 태그에 `order:`가 없으면 `b<마지막 id>`, 있으면 `page=N`. 계산은 Rust가 하고 프런트엔드는 불투명한 커서 문자열만 돌려준다.
-- **한 페이지가 전부 블랙리스트로 숨겨지면** Rust가 다음 페이지를 이어 받는다(최대 횟수 제한).
-- **중복 제거**: 받은 id 집합으로 거른다.
+- **페이지 넘김**: 검색 하나가 Rust의 `PostSearch` 하나다(태그, 다음 페이지, 이미 돌려준 id). 태그에 `order:`가 없으면 `page=b<받은 것 중 가장 작은 id>`, 있으면 `page=N`(750까지). 한 페이지는 100개이고, 그보다 적게 오면 끝이다. 프런트엔드는 검색 id만 들고 있는다. 처음에는 불투명한 커서 문자열을 주고받으려 했지만, 중복 제거에 id 집합이라는 상태가 필요해 Rust가 검색 상태를 갖기로 했다(2026-10-19).
+- **한 페이지가 전부 블랙리스트로 숨겨지면** `PostSearch`가 다음 페이지를 이어 받는다(최대 횟수 제한, 6번).
+- **중복 제거**: `PostSearch`가 돌려준 id 집합으로 거른다. 페이지 번호 방식에서 게시물이 다음 페이지로 밀려 다시 오는 경우다.
 - **미디어 선택**(`media.ts` 한곳): 썸네일 `preview` → 그리드 행 높이가 크면 `sample`, 뷰어는 `sample` → 원본은 요청/확대 시 `file`. 동영상은 `720p` → `480p` → `variants.mp4` → 원본 WebM 순. URL이 null이면 플레이스홀더.
 - **원격 미디어는 연결이 준비된 뒤에만 요청한다.** 준비 전 요청은 킬 스위치에 막혀 실패하고, 웹뷰가 실패를 기억해 다시 요청하지 않는다. 화면은 `connection.svelte.ts`의 `canLoadRemote()`를 보고 렌더링한다.
 
