@@ -1,3 +1,4 @@
+pub mod account;
 pub mod api;
 mod commands;
 mod media;
@@ -7,9 +8,12 @@ pub mod tunnel;
 
 use std::sync::Arc;
 
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tokio::sync::watch;
 
-use network::Network;
+use account::Account;
+use api::Api;
+use network::{Network, UserAgent};
 
 pub fn run() {
     tracing_subscriber::fmt()
@@ -17,32 +21,59 @@ pub fn run() {
         .init();
 
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![commands::connection_status])
+        .invoke_handler(tauri::generate_handler![
+            commands::connection_status,
+            commands::account_status,
+            commands::sign_in,
+            commands::sign_out
+        ])
         .register_asynchronous_uri_scheme_protocol(media::SCHEME, |context, request, responder| {
             media::handle(context.app_handle(), request, responder)
         })
         .setup(|app| {
             secrets::init()?;
             let network = Arc::new(tauri::async_runtime::block_on(Network::start())?);
+            let user_agent = UserAgent::new();
+            let api = Arc::new(Api::new(network.http().clone(), user_agent.clone()));
+            let account = Arc::new(Account::new(Arc::clone(&api)));
             app.manage(Arc::clone(&network));
-            app.manage(Arc::new(media::Media::new(network.http().clone())));
+            app.manage(Arc::clone(&account));
+            app.manage(Arc::new(media::Media::new(
+                network.http().clone(),
+                user_agent,
+            )));
             build_main_window(app)?;
 
-            let handle = app.handle().clone();
-            let mut changes = network.watch_connection();
-            tauri::async_runtime::spawn(async move {
-                while changes.changed().await.is_ok() {
-                    let connection = changes.borrow_and_update().clone();
-                    if let Err(error) = handle.emit("connection-changed", connection) {
-                        tracing::warn!("could not notify the UI of a connection change: {error}");
-                    }
-                }
-            });
+            forward(
+                app.handle(),
+                "connection-changed",
+                network.watch_connection(),
+            );
+            forward(app.handle(), "account-changed", account.watch());
+            let connection = network.watch_connection();
+            tauri::async_runtime::spawn(async move { account.run(connection).await });
             tauri::async_runtime::spawn(async move { network.connect_saved().await });
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("failed to run Tauri application");
+}
+
+/// Sends every new value of `changes` to the UI as `event`.
+fn forward<T: Clone + serde::Serialize + Send + Sync + 'static>(
+    app: &AppHandle,
+    event: &'static str,
+    mut changes: watch::Receiver<T>,
+) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while changes.changed().await.is_ok() {
+            let value = changes.borrow_and_update().clone();
+            if let Err(error) = app.emit(event, value) {
+                tracing::warn!("could not send {event} to the UI: {error}");
+            }
+        }
+    });
 }
 
 /// Built in code rather than tauri.conf.json so platform-specific window options live in one place.

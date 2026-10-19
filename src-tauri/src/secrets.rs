@@ -6,6 +6,7 @@ pub(crate) const SERVICE: &str = "pro.tb.nyabi.Tailgate";
 
 pub const MULLVAD_ACCOUNT: &str = "mullvad-account";
 pub const MULLVAD_DEVICE: &str = "mullvad-device";
+pub const E621_ACCOUNT: &str = "e621-account";
 
 /// Must run once before any other call in this module.
 pub fn init() -> Result<(), Error> {
@@ -32,5 +33,27 @@ pub fn delete(name: &str) -> Result<(), Error> {
     match Entry::new(SERVICE, name)?.delete_credential() {
         Ok(()) | Err(Error::NoEntry) => Ok(()),
         Err(error) => Err(error),
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod testing {
+    use keyring_core::{Entry, mock};
+    use tokio::sync::{Mutex, MutexGuard};
+
+    use super::SERVICE;
+
+    /// The default credential store is process-wide, so the tests that set one take turns.
+    static CREDENTIAL_STORE: Mutex<()> = Mutex::const_new(());
+
+    /// Installs an empty mock store, the test's own while the guard lives.
+    pub(crate) async fn mock_store() -> MutexGuard<'static, ()> {
+        let guard = CREDENTIAL_STORE.lock().await;
+        keyring_core::set_default_store(mock::Store::new().unwrap());
+        guard
+    }
+
+    pub(crate) fn entry(name: &str) -> Entry {
+        Entry::new(SERVICE, name).unwrap()
     }
 }

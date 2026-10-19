@@ -1,17 +1,20 @@
 //! Sends e621 API requests: one start per second, the e621 User-Agent, Basic auth, and retries
 //! for rate limiting (docs/report.md §5).
 
-use std::{sync::RwLock, time::Duration};
+use std::{
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 use reqwest::{StatusCode, header};
 use serde::de::DeserializeOwned;
 use tokio::{
-    sync::Mutex,
+    sync::{Mutex, watch},
     time::{Instant, sleep, sleep_until},
 };
 
 use super::ApiError;
-use crate::network;
+use crate::network::{self, UserAgent};
 
 /// e621 asks for at most one request per second over time; two per second is the hard limit.
 const MIN_INTERVAL: Duration = Duration::from_secs(1);
@@ -29,35 +32,84 @@ pub(super) struct Client {
     http: reqwest::Client,
     base: String,
     next_start: Mutex<Instant>,
-    credentials: RwLock<Option<Credentials>>,
+    credentials: RwLock<Option<Arc<Credentials>>>,
+    /// Kept in step with the credentials for the requests that do not go through this client.
+    user_agent: UserAgent,
+    /// The credentials e621 last answered 401 to while they were the current ones.
+    rejected: watch::Sender<Option<Arc<Credentials>>>,
 }
 
 impl Client {
-    pub(super) fn new(http: reqwest::Client, base: String) -> Self {
+    pub(super) fn new(http: reqwest::Client, base: String, user_agent: UserAgent) -> Self {
         Self {
             http,
             base,
             next_start: Mutex::new(Instant::now()),
             credentials: RwLock::new(None),
+            user_agent,
+            rejected: watch::Sender::new(None),
         }
     }
 
-    pub(super) fn set_credentials(&self, credentials: Option<Credentials>) {
-        *self.credentials.write().expect("credentials lock poisoned") = credentials;
+    pub(super) fn credentials(&self) -> Option<Arc<Credentials>> {
+        self.credentials
+            .read()
+            .expect("credentials lock poisoned")
+            .clone()
     }
 
+    pub(super) fn set_credentials(&self, credentials: Option<Arc<Credentials>>) {
+        let mut current = self.credentials.write().expect("credentials lock poisoned");
+        self.user_agent.set_user(
+            credentials
+                .as_ref()
+                .map(|credentials| credentials.username.as_str()),
+        );
+        *current = credentials;
+    }
+
+    pub(super) fn watch_rejections(&self) -> watch::Receiver<Option<Arc<Credentials>>> {
+        self.rejected.subscribe()
+    }
+
+    /// With the current credentials. A 401 to them is also published to
+    /// [`Client::watch_rejections`], unless they were replaced while the request was out.
     pub(super) async fn get<T: DeserializeOwned>(
         &self,
         path: &str,
         query: &[(&str, &str)],
     ) -> Result<T, ApiError> {
+        let credentials = self.credentials();
+        let result = self.get_as(path, query, credentials.as_deref()).await;
+        if let (Err(ApiError::Unauthorized), Some(credentials)) = (&result, credentials)
+            && self
+                .credentials()
+                .is_some_and(|current| Arc::ptr_eq(&current, &credentials))
+        {
+            self.rejected.send_replace(Some(credentials));
+        }
+        result
+    }
+
+    /// With the given credentials instead of the current ones, as when checking them before
+    /// they are saved.
+    pub(super) async fn get_as<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+        credentials: Option<&Credentials>,
+    ) -> Result<T, ApiError> {
         let mut retries = 0;
         loop {
             self.wait_for_turn().await;
-            let response = self.request(path, query).send().await.map_err(|error| {
-                tracing::warn!("API request {path} failed: {error}");
-                ApiError::Network
-            })?;
+            let response = self
+                .request(path, query, credentials)
+                .send()
+                .await
+                .map_err(|error| {
+                    tracing::warn!("API request {path} failed: {error}");
+                    ApiError::Network
+                })?;
             let status = response.status();
             if matches!(
                 status,
@@ -98,32 +150,28 @@ impl Client {
         sleep_until(start).await;
     }
 
-    fn request(&self, path: &str, query: &[(&str, &str)]) -> reqwest::RequestBuilder {
-        let credentials = self.credentials.read().expect("credentials lock poisoned");
-        let user_agent = credentials.as_ref().map_or_else(
+    fn request(
+        &self,
+        path: &str,
+        query: &[(&str, &str)],
+        credentials: Option<&Credentials>,
+    ) -> reqwest::RequestBuilder {
+        let user_agent = credentials.map_or_else(
             || network::USER_AGENT.to_owned(),
-            |credentials| user_agent(&credentials.username),
+            |credentials| network::user_agent_for(&credentials.username),
         );
         let request = self
             .http
             .get(format!("{}{path}", self.base))
             .query(query)
             .header(header::USER_AGENT, user_agent);
-        match credentials.as_ref() {
+        match credentials {
             Some(credentials) => {
                 request.basic_auth(&credentials.username, Some(&credentials.api_key))
             }
             None => request,
         }
     }
-}
-
-/// e621 asks for the project and the e621 user it runs for (docs/research.md §2).
-fn user_agent(username: &str) -> String {
-    format!(
-        "Tailgate/{} (by {username} on e621)",
-        env!("CARGO_PKG_VERSION")
-    )
 }
 
 /// Only the delay-seconds form; a date falls back to the backoff.
@@ -145,7 +193,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn spaces_request_starts_a_second_apart() {
-        let client = Client::new(reqwest::Client::new(), String::new());
+        let client = Client::new(reqwest::Client::new(), String::new(), UserAgent::new());
         let started = Instant::now();
         let turn = async || {
             client.wait_for_turn().await;

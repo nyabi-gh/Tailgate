@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use super::{
-    Api, ApiError,
+    Api, ApiError, Credentials,
     models::{Post, RawPostEnvelope, RawPosts, RawUser, TagSuggestion, User},
 };
 
@@ -18,6 +18,16 @@ impl Api {
     /// `None` when the request is anonymous.
     pub async fn me(&self) -> Result<Option<User>, ApiError> {
         let raw: RawUser = self.client.get("users/me.json", &[]).await?;
+        Ok(raw.into_user())
+    }
+
+    /// Checks credentials without making them the current ones: `None` if e621 does not
+    /// accept them as a user.
+    pub async fn me_as(&self, credentials: &Credentials) -> Result<Option<User>, ApiError> {
+        let raw: RawUser = self
+            .client
+            .get_as("users/me.json", &[], Some(credentials))
+            .await?;
         Ok(raw.into_user())
     }
 

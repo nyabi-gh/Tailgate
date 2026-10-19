@@ -1,7 +1,10 @@
 //! Owns the loopback SOCKS proxy that every e621 request of the app goes through, and the in-app
 //! tunnel behind it when one is configured.
 
-use std::time::Duration;
+use std::{
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 use serde::Serialize;
 use tokio::sync::{Mutex, watch};
@@ -20,6 +23,40 @@ pub const USER_AGENT: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     " (by Nyabi on e621)"
 );
+
+/// What e621 asks requests to carry: the project and the e621 user it runs for.
+pub fn user_agent_for(username: &str) -> String {
+    format!(
+        "Tailgate/{} (by {username} on e621)",
+        env!("CARGO_PKG_VERSION")
+    )
+}
+
+/// The User-Agent of the signed-in user, shared by everything that requests from e621 outside
+/// the API client (media).
+#[derive(Clone)]
+pub struct UserAgent(Arc<RwLock<String>>);
+
+impl UserAgent {
+    pub fn new() -> Self {
+        Self(Arc::new(RwLock::new(USER_AGENT.to_owned())))
+    }
+
+    pub fn get(&self) -> String {
+        self.0.read().expect("user agent lock poisoned").clone()
+    }
+
+    pub fn set_user(&self, username: Option<&str>) {
+        *self.0.write().expect("user agent lock poisoned") =
+            username.map_or_else(|| USER_AGENT.to_owned(), user_agent_for);
+    }
+}
+
+impl Default for UserAgent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Until the connection settings screen exists (report §12, step 9), the relay is fixed.
 const DEFAULT_RELAY_LOCATION: &str = "jp-tyo";
@@ -186,22 +223,14 @@ impl Network {
 mod tests {
     use std::net::Ipv4Addr;
 
-    use keyring_core::{Entry, mock};
+    use keyring_core::mock;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpListener,
     };
 
     use super::*;
-
-    /// The default credential store is process-wide, so the tests that set one take turns.
-    static CREDENTIAL_STORE: Mutex<()> = Mutex::const_new(());
-
-    /// Installs an empty mock store and returns the entry the saved device lives in.
-    fn mock_store() -> Entry {
-        keyring_core::set_default_store(mock::Store::new().unwrap());
-        Entry::new(secrets::SERVICE, secrets::MULLVAD_DEVICE).unwrap()
-    }
+    use crate::secrets::testing::{entry, mock_store};
 
     /// Whether a request through the app's client gets to a server on this machine, which only
     /// an open route allows.
@@ -240,8 +269,7 @@ mod tests {
 
     #[tokio::test]
     async fn opens_direct_when_no_device_is_saved() {
-        let _store = CREDENTIAL_STORE.lock().await;
-        mock_store();
+        let _store = mock_store().await;
         let network = Network::start().await.unwrap();
         network.connect_saved().await;
         assert_eq!(network.connection(), Connection::Direct);
@@ -250,8 +278,8 @@ mod tests {
 
     #[tokio::test]
     async fn stays_blocked_when_the_credential_store_fails() {
-        let _store = CREDENTIAL_STORE.lock().await;
-        let entry = mock_store();
+        let _store = mock_store().await;
+        let entry = entry(secrets::MULLVAD_DEVICE);
         let credential: &mock::Cred = entry.as_any().downcast_ref().unwrap();
         credential.set_error(keyring_core::Error::NoStorageAccess("access denied".into()));
         let network = Network::start().await.unwrap();
@@ -267,8 +295,10 @@ mod tests {
 
     #[tokio::test]
     async fn stays_blocked_when_the_saved_device_is_unreadable() {
-        let _store = CREDENTIAL_STORE.lock().await;
-        mock_store().set_password("not a device").unwrap();
+        let _store = mock_store().await;
+        entry(secrets::MULLVAD_DEVICE)
+            .set_password("not a device")
+            .unwrap();
         let network = Network::start().await.unwrap();
         network.connect_saved().await;
         assert_eq!(

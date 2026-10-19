@@ -9,7 +9,7 @@ use std::{env, error::Error, time::Instant};
 
 use tailgate_lib::{
     api::{Api, PostSearch},
-    network::{Connection, Network},
+    network::{Connection, Network, UserAgent},
     secrets,
 };
 
@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         other => return Err(format!("no route: {other:?}").into()),
     }
-    let api = Api::new(network.http().clone());
+    let api = Api::new(network.http().clone(), UserAgent::new());
     let started = Instant::now();
     let at = || format!("{:>6.2}s", started.elapsed().as_secs_f64());
 

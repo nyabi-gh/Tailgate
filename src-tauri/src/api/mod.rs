@@ -4,9 +4,15 @@
 mod client;
 mod endpoints;
 pub mod models;
+#[cfg(test)]
+pub(crate) mod testing;
+
+use std::sync::Arc;
 
 use serde::Serialize;
+use tokio::sync::watch;
 
+use crate::network::UserAgent;
 use client::Client;
 pub use client::Credentials;
 pub use endpoints::{PAGE_SIZE, PostSearch};
@@ -58,105 +64,49 @@ pub struct Api {
 impl Api {
     /// `http` should be the app's e621 client, so API requests take the same route and kill
     /// switch as everything else.
-    pub fn new(http: reqwest::Client) -> Self {
-        Self::with_base(http, BASE.to_owned())
+    /// `user_agent` follows the credentials set here, for requests outside the API (media).
+    pub fn new(http: reqwest::Client, user_agent: UserAgent) -> Self {
+        Self::with_base(http, user_agent, BASE.to_owned())
     }
 
-    fn with_base(http: reqwest::Client, base: String) -> Self {
+    pub(crate) fn with_base(http: reqwest::Client, user_agent: UserAgent, base: String) -> Self {
         Self {
-            client: Client::new(http, base),
+            client: Client::new(http, base, user_agent),
         }
     }
 
-    pub fn set_credentials(&self, credentials: Option<Credentials>) {
+    pub fn credentials(&self) -> Option<Arc<Credentials>> {
+        self.client.credentials()
+    }
+
+    pub fn set_credentials(&self, credentials: Option<Arc<Credentials>>) {
         self.client.set_credentials(credentials);
+    }
+
+    /// Credentials e621 rejected (401) while they were in use: an API key that expired or was
+    /// revoked.
+    pub fn watch_rejections(&self) -> watch::Receiver<Option<Arc<Credentials>>> {
+        self.client.watch_rejections()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        collections::VecDeque,
-        net::Ipv4Addr,
-        sync::{Arc, Mutex},
-        time::Duration,
-    };
+    use std::{net::Ipv4Addr, time::Duration};
 
     use serde_json::{Value, json};
-    use tokio::{
-        io::{AsyncReadExt, AsyncWriteExt},
-        net::TcpListener,
-        sync::mpsc,
-        time::Instant,
-    };
+    use tokio::{net::TcpListener, sync::mpsc};
 
-    use super::*;
+    use super::{
+        testing::{Received, json_response, ok, serve},
+        *,
+    };
     use crate::network::USER_AGENT;
 
-    #[derive(Debug)]
-    struct Received {
-        at: Instant,
-        target: String,
-        user_agent: String,
-        authorization: Option<String>,
-    }
-
-    fn json_response(status: &str, body: &str) -> String {
-        format!(
-            "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-            body.len()
-        )
-    }
-
-    fn ok(body: &Value) -> String {
-        json_response("200 OK", &body.to_string())
-    }
-
-    /// An e621 stand-in that answers each request with the next of `responses`.
-    async fn serve(responses: Vec<String>) -> (Api, mpsc::UnboundedReceiver<Received>) {
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
-        let base = format!("http://{}/", listener.local_addr().unwrap());
-        let responses = Arc::new(Mutex::new(VecDeque::from(responses)));
-        let (sender, received) = mpsc::unbounded_channel();
-        tokio::spawn(async move {
-            loop {
-                let (mut stream, _) = listener.accept().await.unwrap();
-                let responses = Arc::clone(&responses);
-                let sender = sender.clone();
-                tokio::spawn(async move {
-                    let mut head = Vec::new();
-                    let mut buffer = [0; 1024];
-                    while !head.ends_with(b"\r\n\r\n") {
-                        let read = stream.read(&mut buffer).await.unwrap();
-                        assert_ne!(read, 0, "the client closed before finishing its request");
-                        head.extend_from_slice(&buffer[..read]);
-                    }
-                    let head = String::from_utf8(head).unwrap();
-                    let header = |name: &str| {
-                        head.lines().find_map(|line| {
-                            let (key, value) = line.split_once(": ")?;
-                            key.eq_ignore_ascii_case(name).then(|| value.to_owned())
-                        })
-                    };
-                    sender
-                        .send(Received {
-                            at: Instant::now(),
-                            target: head.split(' ').nth(1).unwrap().to_owned(),
-                            user_agent: header("user-agent").unwrap_or_default(),
-                            authorization: header("authorization"),
-                        })
-                        .unwrap();
-                    let response = responses
-                        .lock()
-                        .unwrap()
-                        .pop_front()
-                        .expect("more requests than scripted responses");
-                    stream.write_all(response.as_bytes()).await.unwrap();
-                });
-            }
-        });
+    async fn fake_api(responses: Vec<String>) -> (Api, mpsc::UnboundedReceiver<Received>) {
+        let (base, received) = serve(responses).await;
         let http = reqwest::Client::builder().no_proxy().build().unwrap();
-        (Api::with_base(http, base), received)
+        (Api::with_base(http, UserAgent::new(), base), received)
     }
 
     fn anonymous() -> Value {
@@ -189,12 +139,12 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn identifies_the_user_in_the_user_agent_and_authorization() {
-        let (api, mut received) = serve(vec![ok(&anonymous()), ok(&anonymous())]).await;
+        let (api, mut received) = fake_api(vec![ok(&anonymous()), ok(&anonymous())]).await;
         assert_eq!(api.me().await, Ok(None));
-        api.set_credentials(Some(Credentials {
+        api.set_credentials(Some(Arc::new(Credentials {
             username: "alice".into(),
             api_key: "key".into(),
-        }));
+        })));
         api.me().await.unwrap();
         let requests = drain(&mut received);
         assert_eq!(requests[0].target, "/users/me.json");
@@ -214,7 +164,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn retries_after_the_delay_the_server_asks_for() {
         let busy = "HTTP/1.1 503 Service Unavailable\r\nretry-after: 3\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
-        let (api, mut received) = serve(vec![busy.into(), ok(&anonymous())]).await;
+        let (api, mut received) = fake_api(vec![busy.into(), ok(&anonymous())]).await;
         assert_eq!(api.me().await, Ok(None));
         let requests = drain(&mut received);
         assert_eq!(requests.len(), 2);
@@ -224,7 +174,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn gives_up_after_three_retries() {
         let limited = json_response("429 Too Many Requests", "{}");
-        let (api, mut received) = serve(vec![limited; 4]).await;
+        let (api, mut received) = fake_api(vec![limited; 4]).await;
         assert_eq!(api.me().await, Err(ApiError::RateLimited));
         assert_eq!(drain(&mut received).len(), 4);
     }
@@ -232,14 +182,14 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn does_not_wait_out_long_retry_after_delays() {
         let busy = "HTTP/1.1 503 Service Unavailable\r\nretry-after: 600\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
-        let (api, mut received) = serve(vec![busy.into()]).await;
+        let (api, mut received) = fake_api(vec![busy.into()]).await;
         assert_eq!(api.me().await, Err(ApiError::Unavailable));
         assert_eq!(drain(&mut received).len(), 1);
     }
 
     #[tokio::test(start_paused = true)]
     async fn reports_failures_as_codes() {
-        let (api, _received) = serve(vec![
+        let (api, _received) = fake_api(vec![
             json_response("401 Unauthorized", "{}"),
             json_response("410 Gone", "{}"),
             json_response("418 I'm a teapot", "{}"),
@@ -257,14 +207,19 @@ mod tests {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
         let base = format!("http://{}/", listener.local_addr().unwrap());
         drop(listener);
-        let api = Api::with_base(reqwest::Client::builder().no_proxy().build().unwrap(), base);
+        let api = Api::with_base(
+            reqwest::Client::builder().no_proxy().build().unwrap(),
+            UserAgent::new(),
+            base,
+        );
         assert_eq!(api.me().await, Err(ApiError::Network));
     }
 
     #[tokio::test(start_paused = true)]
     async fn pages_by_the_lowest_id_and_skips_posts_seen_before() {
         let first: Vec<u64> = (101..=200).rev().collect();
-        let (api, mut received) = serve(vec![ok(&posts(first)), ok(&posts([101, 100, 99]))]).await;
+        let (api, mut received) =
+            fake_api(vec![ok(&posts(first)), ok(&posts([101, 100, 99]))]).await;
         let mut search = PostSearch::new("  wolf   solo ");
         assert_eq!(search.next_page(&api).await.unwrap().len(), PAGE_SIZE);
         assert!(!search.is_done());
@@ -290,7 +245,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn pages_by_number_when_the_search_sets_an_order() {
-        let (api, mut received) = serve(vec![ok(&posts(1..=100)), ok(&posts(101..=150))]).await;
+        let (api, mut received) = fake_api(vec![ok(&posts(1..=100)), ok(&posts(101..=150))]).await;
         let mut search = PostSearch::new("wolf Order:score");
         search.next_page(&api).await.unwrap();
         search.next_page(&api).await.unwrap();
@@ -308,7 +263,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn stops_at_the_last_page_reachable_by_number() {
-        let (api, mut received) = serve(vec![ok(&posts(1..=100))]).await;
+        let (api, mut received) = fake_api(vec![ok(&posts(1..=100))]).await;
         let mut search = PostSearch::new("order:random");
         search.skip_to_page(750);
         search.next_page(&api).await.unwrap();
@@ -318,7 +273,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn asks_for_the_same_page_again_after_an_error() {
-        let (api, mut received) = serve(vec![
+        let (api, mut received) = fake_api(vec![
             json_response("500 Internal Server Error", "{}"),
             ok(&posts([5])),
         ])

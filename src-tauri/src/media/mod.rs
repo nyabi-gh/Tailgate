@@ -14,6 +14,7 @@ use tauri::{
     http::{HeaderValue, Request, Response, StatusCode, header},
 };
 
+use crate::network::UserAgent;
 use blocks::{BLOCK_SIZE, Block, BlockCache};
 
 pub const SCHEME: &str = "media";
@@ -23,6 +24,7 @@ const CACHE_CAPACITY: u64 = 256 * 1024 * 1024;
 pub struct Media {
     /// The app's e621 client, so media follows the same route and kill switch as the API.
     http: reqwest::Client,
+    user_agent: UserAgent,
     origin: String,
     blocks: BlockCache,
 }
@@ -36,13 +38,14 @@ pub fn handle(app: &AppHandle, request: Request<Vec<u8>>, responder: UriSchemeRe
 }
 
 impl Media {
-    pub fn new(http: reqwest::Client) -> Self {
-        Self::with_origin(http, ORIGIN.to_owned())
+    pub fn new(http: reqwest::Client, user_agent: UserAgent) -> Self {
+        Self::with_origin(http, user_agent, ORIGIN.to_owned())
     }
 
-    fn with_origin(http: reqwest::Client, origin: String) -> Self {
+    fn with_origin(http: reqwest::Client, user_agent: UserAgent, origin: String) -> Self {
         Self {
             http,
+            user_agent,
             origin,
             blocks: BlockCache::new(CACHE_CAPACITY),
         }
@@ -74,6 +77,7 @@ impl Media {
         let response = self
             .http
             .get(format!("{}{path}", self.origin))
+            .header(header::USER_AGENT, self.user_agent.get())
             .send()
             .await
             .map_err(|error| {
@@ -165,6 +169,7 @@ impl Media {
         let response = self
             .http
             .get(format!("{}{path}", self.origin))
+            .header(header::USER_AGENT, self.user_agent.get())
             .header(header::RANGE, format!("bytes={first}-{last}"))
             .send()
             .await
@@ -310,7 +315,10 @@ mod tests {
             }
         });
         let http = reqwest::Client::builder().no_proxy().build().unwrap();
-        (Arc::new(Media::with_origin(http, origin)), received)
+        (
+            Arc::new(Media::with_origin(http, UserAgent::new(), origin)),
+            received,
+        )
     }
 
     async fn answer(mut stream: TcpStream, file: Bytes, requests: mpsc::UnboundedSender<String>) {
