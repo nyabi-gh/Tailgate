@@ -1,0 +1,164 @@
+# 조사 결과 (2026-10-19 기준, 같은 날 실측으로 7절 추가)
+
+"확인"은 1차 자료(레지스트리, 공식 문서, 실제 요청)에서 직접 본 내용이다. "미확인"은 알려져 있지만 원문이나 실측으로 확인하지 못한 내용이다.
+
+## 0. 로컬 개발 환경 (확인)
+
+- macOS 27.0.1, Xcode 27.1
+- Rust 1.98.1 (rustup), Node 26.12, npm, bun
+- 코드 서명 인증서는 `Apple Development` 하나뿐이다. 배포용 **`Developer ID Application` 인증서는 없다.**
+
+## 1. e621 접속 상태 (확인)
+
+- `e621.net`은 이 네트워크에서 **TLS ClientHello 직후 연결이 리셋된다.** DNS는 정상이고, 같은 IP에 다른 SNI로 접속하면 정상 응답한다. 즉 SNI 기반 차단이다.
+- `static1.e621.net`(이미지·동영상 파일)은 **정상 접속된다.**
+  - 썸네일 요청은 Referer가 없거나 `tauri://localhost/`여도 200을 준다. **단, 이 시험에는 브라우저의 `Sec-Fetch-*` 헤더가 빠져 있었다. 실제 웹뷰 요청은 403이다(7절).**
+  - 동영상은 Range 요청에 206을 준다. 웹뷰 `<video>`가 그대로 스트리밍할 수 있다.
+  - `cache-control: max-age=2678400`(31일)이라 웹뷰 HTTP 캐시가 잘 먹는다.
+  - `access-control-allow-origin: https://e621.net`이라 **JS `fetch`나 canvas로는 읽을 수 없다.** `<img>`/`<video>` 표시는 문제없다.
+- e621의 DNS HTTPS 레코드에 ECH 설정(공개 이름 `cloudflare-ech.com`)이 있다. 앱 자체에서 차단을 피하는 기술적 여지는 있지만, 이번 조사에서는 우회 접속을 시도하지 않았다.
+- 결론: **API 동작은 Pawru의 조사 자료와 픽스처를 기준으로 한다.** 실제 API 호출 검증은 사용자가 쓰는 접속 수단(VPN 등)이 켜진 상태에서 해야 한다.
+
+## 2. e621 API
+
+Pawru `docs/research.md`(2026-10-16, 실호출 확인)를 그대로 따른다. 데스크톱 앱에 중요한 부분만 요약한다.
+
+- **인증**: HTTP Basic `username:api_key`. 쿼리 방식은 쓰지 않는다. `/users/me.json`은 로그아웃 상태에서도 200이므로 `id`가 null인지로 판단한다.
+- **User-Agent 필수**: `Tailgate/0.1 (by <username> on e621)`. 브라우저 UA 흉내는 금지. 웹뷰가 API를 직접 부르면 브라우저 UA가 나가므로 **API는 반드시 Rust 쪽에서 호출한다.**
+- **Rate limit**: 초당 2회 하드 리밋(503), 권장 초당 1회. 쓰기 요청은 토큰 버킷(429). 정적 파일은 대상 아님.
+- **페이지네이션**: `page=b<id>` 커서는 깊이 제한 없음(단 `order:id_desc` 강제). `page=N`은 750까지, 넘으면 410.
+- **미디어 필드**: `preview`(256px, `width`/`height` 포함), `sample`(최대 850px), `file`(원본). WebM 게시물은 `sample.alternates`에 H.264 MP4(`variants.mp4`, `samples.720p`/`480p`)가 있다.
+- **숨김/삭제 게시물**: URL 필드가 null로 온다.
+- **블랙리스트**: 사이트도 클라이언트에서 거른다. 앱이 직접 구현해야 한다(문법은 Pawru 조사 참고).
+- **약관**: 개인적·비상업적 용도, 18세 이상. 대량 수집은 `db_export`를 쓰라고 안내한다. 일괄 다운로드 기능을 넣는다면 API 스로틀을 그대로 거쳐야 한다.
+
+Pawru의 테스트 픽스처(`PawruTests/Fixtures/*.json`, 실제 응답)를 재사용할 수 있다.
+
+## 3. Rust 데스크톱 UI 선택지
+
+버전은 crates.io/npm에서 직접 확인했다.
+
+| 후보 | 최신 | 렌더링 | 이 앱 관점의 평가 |
+|---|---|---|---|
+| **Tauri** | 2.12.4 (2026-10-14) | 시스템 웹뷰 (macOS WKWebView, Windows WebView2) | GIF·WebM·MP4 재생, 이미지 디코딩·캐시, 스크롤 성능을 웹뷰가 해결한다. 번들러·서명·공증·업데이터가 내장. 3.0은 아직 alpha(CEF 런타임 실험 중). |
+| Dioxus | 0.7.10 | 데스크톱은 역시 웹뷰(wry) | UI까지 Rust로 쓸 수 있다. 미디어 처리 이점은 Tauri와 같지만 생태계·도구가 얇고 0.x라 API가 계속 바뀐다. |
+| egui | 0.37.0 | 즉시 모드, GPU | 도구·편집기용. **동영상 재생이 없어** ffmpeg/gstreamer를 붙여야 한다. 애니메이션 GIF, 대형 이미지 다운샘플링도 직접. 디자인 자유도가 낮다. |
+| iced | 0.14.0 (2025-12) | 리테인드, GPU | 위와 같은 미디어 문제. 릴리스 간격이 길다. |
+| Slint | 1.18.1 | 자체 마크업, GPU | 임베디드 강세. 동영상 재생 없음. |
+| GPUI | 0.2.2 (2025-10) | Zed용 | 일반 앱용으로 문서·릴리스가 부족하다. |
+
+**이미지 뷰어의 핵심 난제는 미디어**(애니메이션 GIF, WebM/MP4, 수천 장 썸네일 캐시)다. 네이티브 Rust GUI는 이걸 전부 직접 만들어야 하고, 동영상은 ffmpeg 같은 무거운 C 의존성과 배포 시 라이선스·서명 문제를 끌고 온다. **Tauri 2 + Rust 백엔드가 가장 현실적이다.**
+
+### 웹뷰의 미디어 지원
+- **WebView2 (Windows, Chromium 기반)**: WebM(VP8/VP9/AV1)과 H.264 MP4 모두 재생. (일반적으로 알려진 사실, 이번에 실측은 안 함)
+- **WKWebView (macOS)**: Safari는 macOS 11.3부터 WebM/VP9를 재생한다. 다만 **서드파티 앱의 WKWebView에서 VP9가 기본으로 켜져 있는지는 미확인**이다(VideoToolbox 보조 디코더 등록이 필요하다는 포럼 보고가 있음). → MP4 변형을 우선 쓰면 문제가 되지 않는다. 1단계에서 실측한다.
+- 애니메이션 GIF는 두 웹뷰 모두 `<img>`로 재생한다.
+
+### 프런트엔드 프레임워크
+| 후보 | 최신 | 비고 |
+|---|---|---|
+| **Svelte 5** | 5.57.2 (2026-10-06) | 런타임이 작고 반응성(runes)이 단순하다. 가상 스크롤 같은 성능 민감 코드를 직접 짜기 쉽다. |
+| React | 19.3.1 | 생태계는 가장 크지만 이 규모에서는 이점이 적다. |
+| SolidJS | 1.9.17 | 성능은 좋지만 생태계가 작다. |
+
+- Vite 8.3.4, `@sveltejs/vite-plugin-svelte` 7.3.1
+- **TypeScript 7.0.2(Go 네이티브 컴파일러)가 최신이다.** 하지만 `svelte-check` 4.7.7의 peer 범위가 `^5 || ^6`이라 **6.0.3에 고정했다**(확인).
+- Tailwind CSS 4.3.3 + `@tailwindcss/vite` 4.3.3, `@lucide/svelte` 1.59.0 (설치 시 확인).
+
+## 4. Rust 쪽 주요 크레이트 (버전 확인)
+
+| 용도 | 크레이트 | 버전 |
+|---|---|---|
+| 앱 | tauri / tauri-build | 2.12.4 / 2.7.3 |
+| HTTP | reqwest (기본 TLS가 rustls) | 0.13.5 |
+| 비동기 | tokio | 1.53.3 |
+| 직렬화 | serde | 1.0.229 |
+| 오류 | thiserror | 2.0.21 |
+| 자격 증명 | keyring-core + apple-native-keyring-store / windows-native-keyring-store | 1.0.1 / 1.0.2 / 1.1.0 |
+| 창 상태 기억 | tauri-plugin-window-state | 2.5.0 |
+| 중복 실행 방지 | tauri-plugin-single-instance | 2.5.4 |
+| 파일 저장 대화상자 | tauri-plugin-dialog | 2.8.3 |
+| 외부 링크 열기 | tauri-plugin-opener | 2.7.2 |
+| 자동 업데이트 | tauri-plugin-updater | 2.14.0 |
+
+- `keyring` 4.x는 `keyring-core` + 플랫폼별 저장소 크레이트 구조로 바뀌었다. 기본 `v1` 기능은 예전 API를 유지하지만, 문서는 필요한 저장소 크레이트만 직접 의존하라고 권한다.
+- reqwest는 macOS·Windows의 시스템 프록시 설정을 따른다(미확인: 0.13에서의 정확한 동작은 1단계에서 확인).
+
+## 5. 배포
+
+### macOS
+- Tauri가 `.app`과 `.dmg`를 만든다.
+- 다른 Mac에서 경고 없이 열리려면 **Developer ID Application 서명 + 공증(notarytool)**이 필요하다. 유료 계정이 있으므로 인증서만 발급하면 된다(현재 키체인에 없음).
+- 공증은 App Store Connect API 키 또는 Apple ID + 앱 전용 암호로 한다. Tauri 번들러가 환경 변수(`APPLE_API_KEY` 등)를 받아 자동 처리한다.
+- 공증 없이 배포하면 최근 macOS에서는 우클릭-열기 우회가 막혀 있어 시스템 설정에서 직접 허용해야 한다.
+- 아키텍처: Apple Silicon 전용(`aarch64-apple-darwin`) 또는 유니버설. 유니버설은 빌드 시간과 용량이 두 배다.
+
+### Windows
+- NSIS 설치 파일(`-setup.exe`)이 기본이다. WebView2는 Windows 10/11에 대부분 기본 설치되어 있고, 없으면 설치기가 부트스트래퍼로 받는다.
+- **macOS에서 Windows 빌드**: Tauri는 `cargo-xwin`으로 NSIS 크로스 빌드를 지원하지만 실험적이다. **GitHub Actions `windows-latest` 러너가 확실하다.**
+- 서명하지 않으면 처음 실행할 때 SmartScreen 경고가 뜬다("추가 정보 → 실행"으로 넘어갈 수 있음).
+- 서명 선택지: Azure Artifact Signing(구 Trusted Signing, 월 과금, 신원 검증 필요. 개인 개발자의 지역별 가입 가능 여부는 미확인) 또는 OV 인증서 구매.
+
+### 자동 업데이트
+- `tauri-plugin-updater`: 업데이트 파일을 자체 키로 서명하고, GitHub Releases에 올린 `latest.json`을 확인한다. 코드 서명과는 별개다.
+- GitHub Actions의 `tauri-action`이 두 플랫폼 빌드 → 릴리스 업로드 → `latest.json` 생성을 한 번에 해 준다.
+
+## 6. 앱 내부 전용 VPN (WireGuard 유저스페이스)
+
+요구사항: 시스템 전체가 아니라 **이 앱의 트래픽만** WireGuard 터널로 보낸다. WireGuard 설정 파일 가져오기와 Mullvad 계정 연동을 모두 지원한다.
+
+### 방식
+OS에 TUN 인터페이스를 만들면 관리자 권한(macOS 네트워크 확장, Windows wintun 드라이버)이 필요하고 시스템 라우팅에 손을 대야 한다. 대신 **앱 프로세스 안에서 전부 처리**한다.
+
+```
+앱 TCP 연결 ─▶ smoltcp(유저스페이스 TCP/IP) ─IP 패킷─▶ WireGuard 암호화(gotatun) ─UDP─▶ VPN 서버
+```
+
+- 같은 구조로 동작하는 기존 프로젝트: `onetun`(0.3.10, 2024-12 이후 정체) — boringtun + smoltcp. 개념 검증으로 참고만 한다.
+- OS 입장에서는 앱이 VPN 서버로 UDP를 보내는 것뿐이라 **권한 상승이 필요 없고, 다른 앱에는 영향이 없다.**
+
+### 크레이트 (버전 확인)
+| 용도 | 크레이트 | 버전 | 비고 |
+|---|---|---|---|
+| WireGuard | **gotatun** | 0.10.1 (2026-10-16) | Mullvad가 유지하는 boringtun 포크, 보안 감사 보고서 공개, MPL-2.0. `noise::Tunn`(지점 간 연결), `tun`/`udp` 트레이트가 공개되어 있다. 메서드 시그니처는 1단계에서 확인. |
+| (대안) | boringtun | 0.7.1 (2026-05) | BSD-3. `noise::Tunn::encapsulate/decapsulate` API가 알려져 있다. gotatun API가 맞지 않으면 대안. |
+| TCP/IP | smoltcp | 0.14.0 (2026-08) | `no_std` 지향 유저스페이스 스택. |
+| DNS 메시지 | hickory-proto | 0.26.3 | 터널 안에서 DNS 조회할 때 메시지 인코딩만 쓴다. |
+| 키 생성 | x25519-dalek | 3.0.0 | gotatun이 x25519를 재노출하므로 그것을 쓸 수도 있다. |
+
+### Mullvad API (mullvadvpn-app 소스 `mullvad-api`에서 확인)
+- 서버 목록: `GET https://api.mullvad.net/app/v1/relays` — 인증 불필요. **이 네트워크에서 접속됨(200, 약 600KB).**
+  - `wireguard.relays[]`: `hostname`, `location`, `active`, `ipv4_addr_in`, `ipv6_addr_in`, `public_key`, `daita` 등. 이번 조회 시 553개.
+  - `wireguard.ipv4_gateway`: `10.64.0.1` (터널 안 DNS 겸 게이트웨이), `port_ranges`
+  - `locations`: 도시/국가 이름
+- 토큰: `POST auth/v1/token` 본문 `{"account_number": "…"}` → `access_token`(만료 있음). 요청에 붙이는 형식(Bearer 추정)은 미확인.
+- 기기(키) 등록: `accounts/v1/devices`
+  - 생성 `POST` `{pubkey, hijack_dns: false}` → 201, `{id, name, pubkey, ipv4_address, ipv6_address, created}` — 터널 주소를 여기서 받는다.
+  - 목록 `GET`, 조회 `GET /{id}`, 삭제 `DELETE /{id}` → 204, 키 교체 `PUT /{id}/pubkey`
+- Mullvad 계정당 기기 수 제한이 있다(일반적으로 5대로 알려짐, 미확인). 앱이 기기 하나를 차지하므로 로그아웃 시 기기를 지운다.
+
+### 웹뷰 트래픽 (처음 계획 → 폐기)
+처음 계획은 웹뷰에 프록시를 지정해(`proxy_url`, macOS 14+와 `mac-proxy` 필요) 웹뷰도 앱의 SOCKS를 타게 하는 것이었다. 실제로 웹뷰 요청이 SOCKS로 들어오는 것까지는 확인했다. 그러나 static1의 핫링크 차단 때문에 웹뷰 요청은 프록시와 상관없이 403이었다(7절). 그래서 미디어도 Rust가 받아 `media://` 커스텀 프로토콜로 넘기는 방식으로 바꾸고, 웹뷰 프록시는 없앴다.
+- "커스텀 프로토콜은 응답 본문을 스트리밍하지 못해 동영상에 맞지 않는다"는 우려는 Range 요청을 상위로 그대로 넘기면 피할 수 있다. 다만 아래 7절의 작은 Range 문제가 있다.
+
+## 7. 실측 결과 (2026-10-19)
+
+### 앱 내장 터널 (macOS, Mullvad `jp-tyo-wg-001`)
+- gotatun 0.10.1의 `DeviceBuilder::with_ip_pair`에 직접 만든 `IpSend`/`IpRecv`를 꽂으면 OS TUN 없이 동작한다. 핸드셰이크·타이머·대기 패킷 처리는 gotatun이 한다. `device` 기능이 필요하고, 암호 백엔드는 기본값(`aws-lc-rs`)이다. reqwest 0.13의 기본 TLS도 aws-lc-rs라 하나로 통일된다. Windows 빌드에서 aws-lc-rs가 문제없는지는 미확인.
+- smoltcp 0.14: `poll()` 한 번에 대기 패킷을 모두 처리한다. `async` 기능의 소켓 waker로 `AsyncRead/AsyncWrite` 스트림을 만들 수 있다. DNS 소켓이 있어 터널 안 DNS에 별도 라이브러리가 필요 없다.
+- 시스템 VPN을 끄고 e621 직접 접속이 막힌 상태에서:
+  - Mullvad 출구 확인 OK, **e621 API 200 (364ms)**
+  - Cloudflare 10MB: 직접 9.4 MB/s, 앱 터널 5.2 MB/s. 직접은 국내 Cloudflare, 터널은 도쿄 경유라 같은 조건의 비교는 아니다.
+  - static1 원본 파일은 직접이든 터널이든 0.2~0.4 MB/s로 느렸다. 서버 쪽 사정으로 보인다.
+- 터널 시작에서 대부분의 시간(3~4초)은 Mullvad 서버 목록(약 600KB)을 받는 데 쓴다. 터널 자체는 수 ms 만에 올라온다.
+- `keyring-core` 1.0 + `apple-native-keyring-store`는 `keychain` 기능을 켜야 컴파일된다(`protected`는 데이터 보호 키체인이라 서명·엔타이틀먼트가 필요). `security add-generic-password`로 만든 항목을 앱이 읽으면 macOS가 접근 허용 창을 띄운다.
+- `wireguard-netstack`(GPL-3.0)은 gotatun 0.2·smoltcp 0.12에 묶여 있고 2026-02 이후 릴리스가 없어 쓰지 않았다.
+
+### static1 핫링크 차단 (직접 연결에서도 같음)
+- 다음 세 헤더가 **함께** 오고 e621 Referer가 없으면 403이다: `Sec-Fetch-Dest: image`(동영상은 `video`), `Sec-Fetch-Mode: no-cors`, `Sec-Fetch-Site: cross-site`. 하나씩, 또는 `Sec-Fetch-Site: same-site`이면 200이다.
+- 이 셋은 웹뷰의 `<img>`/`<video>`가 자동으로 보내는 헤더이고, 페이지 출처(`tauri://localhost`, `http://localhost:1420`)는 늘 cross-site다. 웹 코드로는 바꿀 수 없다.
+- Referer를 `https://e621.net/`로 위조하면 통과하지만 쓰지 않는다. API 클라이언트로서 자기 UA로 파일을 받는 것이 정상 경로이므로 Rust가 받는다.
+
+### `media://`에서의 동영상
+- WKWebView는 커스텀 프로토콜의 MP4를 8~24바이트짜리 Range로 수백 번 순차적으로 읽는다(MP4 구조 파싱). 요청마다 상위로 왕복하면 각각 약 145ms(도쿄 경유)라 재생이 시작되지 않는다. 이미지(Range 없음)는 문제없다.
+- 해결 방향: 블록 단위 읽기 캐시(report.md 13절).
