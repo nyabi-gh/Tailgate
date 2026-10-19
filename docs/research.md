@@ -37,6 +37,12 @@ Pawru `docs/research.md`(2026-10-16, 실호출 확인)를 그대로 따른다. �
 
 Pawru의 테스트 픽스처(`PawruTests/Fixtures/*.json`, 실제 응답)를 재사용할 수 있다.
 
+2026-10-19 `api_probe`로 터널을 거쳐 다시 확인한 것:
+- 응답 구조는 2026-10-16 픽스처와 같다(검색, 단일 게시물, 익명 `me`, 자동완성).
+- `status:deleted` 검색 100개는 모두 파일 URL이 null이었다(익명).
+- 자동완성은 철자가 비슷한 태그도 돌려준다. `zzzzqqqq`에 `zzz`, `zzz4` 등이 왔다.
+- `page=b<id>`로 이어 받은 두 번째 페이지는 첫 페이지 최소 id보다 작은 id부터 시작했다(겹침 없음).
+
 ## 3. Rust 데스크톱 UI 선택지
 
 버전은 crates.io/npm에서 직접 확인했다.
