@@ -11,6 +11,7 @@
 use std::{env, error::Error, time::Instant};
 
 use tailgate_lib::{
+    network::USER_AGENT,
     secrets,
     tunnel::{
         Tunnel,
@@ -18,8 +19,6 @@ use tailgate_lib::{
         socks::{Route, SocksServer},
     },
 };
-
-const USER_AGENT: &str = "Tailgate/0.1 (by Nyabi on e621)";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -142,7 +141,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         );
     }
 
-    if let Some(url) = env::var("PROBE_DOWNLOAD").ok() {
+    if let Ok(url) = env::var("PROBE_DOWNLOAD") {
         let started = Instant::now();
         let bytes = client
             .get(&url)

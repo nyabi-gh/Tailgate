@@ -180,9 +180,9 @@ impl NetStack {
             }
         };
         addresses
-            .iter()
-            .find_map(|address| match address {
-                IpAddress::Ipv4(ip) => Some(*ip),
+            .first()
+            .map(|address| match address {
+                IpAddress::Ipv4(ip) => *ip,
             })
             .ok_or_else(|| {
                 io::Error::new(
