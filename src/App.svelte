@@ -2,6 +2,7 @@
   import EmptySearch from "./components/EmptySearch.svelte";
   import SearchField from "./components/SearchField.svelte";
   import Sidebar from "./components/Sidebar.svelte";
+  import { isMac } from "./lib/platform";
   import type { View } from "./lib/views";
 
   let view = $state<View>("search");
@@ -13,7 +14,9 @@
   }
 
   function onkeydown(event: KeyboardEvent) {
-    const commandK = event.key === "k" && (event.metaKey || event.ctrlKey);
+    // The physical key: `key` changes with Caps Lock and the input source (Hangul, for one). Only
+    // the platform's own modifier, since Ctrl K in a macOS text field deletes to the end of line.
+    const commandK = event.code === "KeyK" && (isMac ? event.metaKey : event.ctrlKey);
     const slash = event.key === "/" && !isTyping(event.target);
     if (commandK || slash) {
       event.preventDefault();
