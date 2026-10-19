@@ -22,7 +22,13 @@ export function canLoadRemote(): boolean {
 }
 
 export async function watchConnection() {
-  // Subscribe first so a change between the two calls is not missed.
-  await listen<Connection>("connection-changed", (event) => (current = event.payload));
-  current = await invoke<Connection>("connection_status");
+  // Subscribe first so a change between the two calls is not missed. Events and command replies
+  // arrive separately and in no fixed order, so an event that beats the reply is the newer state.
+  let changed = false;
+  await listen<Connection>("connection-changed", (event) => {
+    changed = true;
+    current = event.payload;
+  });
+  const initial = await invoke<Connection>("connection_status");
+  if (!changed) current = initial;
 }
