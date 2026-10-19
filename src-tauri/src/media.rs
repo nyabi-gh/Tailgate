@@ -108,7 +108,7 @@ fn cap_range(range: &str) -> String {
     let Ok(start) = start.parse::<u64>() else {
         return range.to_string();
     };
-    let limit = start + MAX_RANGE_BYTES - 1;
+    let limit = start.saturating_add(MAX_RANGE_BYTES - 1);
     let end = if end.is_empty() {
         limit
     } else {
@@ -148,6 +148,15 @@ mod tests {
         assert_eq!(
             cap_range("bytes=10-999999999"),
             format!("bytes=10-{}", 10 + MAX_RANGE_BYTES - 1)
+        );
+    }
+
+    #[test]
+    fn caps_ranges_that_start_near_the_end_of_u64() {
+        let start = u64::MAX - 1;
+        assert_eq!(
+            cap_range(&format!("bytes={start}-")),
+            format!("bytes={start}-{}", u64::MAX)
         );
     }
 
