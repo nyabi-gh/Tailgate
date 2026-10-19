@@ -17,7 +17,7 @@ Windows·macOS용 e621 뷰어. 다른 사람에게도 배포한다.
 
 앱의 외부 요청은 모두 Rust에서 나가고, 앱 안의 SOCKS5 프록시와 (설정했다면) 터널을 거친다.
 
-- **API는 Rust에서만 부른다.** 웹뷰가 부르면 브라우저 UA가 나가서 e621 규칙(전용 UA)을 어기고, 스로틀을 우회하는 경로가 생긴다. API 키도 웹뷰 메모리에 올라가지 않는다.
+- **API는 Rust에서만 부른다.** 웹뷰가 부르면 브라우저 UA가 나가서 e621 규칙(전용 UA)을 어기고, 스로틀을 우회하는 경로가 생긴다. API 키는 사용자가 로그인 시트에 입력하는 순간에만 웹뷰에 있고, 보낸 뒤 입력값을 지운다. 그 뒤로는 Rust만 갖는다.
 - **미디어도 Rust가 받아 `media://`로 넘긴다.** static1은 웹뷰의 cross-site 요청을 핫링크로 보고 403을 준다(research.md 7절). 웹 페이지는 그 헤더를 바꿀 수 없다.
 
 ## 2. 결정 사항
@@ -94,7 +94,7 @@ tailgate/
         models.rs        e621 원본 응답(serde) → 앱 모델 정규화
         endpoints.rs     posts, users/me, autocomplete, PostSearch(페이지 넘김) … (favorites, votes는 8번)
       blacklist.rs       파서 + 평가기
-      account.rs         API 키 저장/삭제, 현재 사용자 상태
+      account.rs         API 키 저장/삭제(키체인 `e621-account`), 로그인·로그아웃, 시작 시 복원·확인, 401 처리, 계정 상태(watch)
       settings.rs        설정 JSON (앱 설정 디렉터리)
       download.rs        원본 다운로드, 파일명 규칙
     examples/
@@ -104,6 +104,7 @@ tailgate/
   src/                   Svelte 5 + TypeScript
     lib/
       connection.svelte.ts  연결 상태 (명령 + 이벤트 구독), canLoadRemote()
+      account.svelte.ts  계정 상태 (명령 + 이벤트 구독), signIn/signOut
       media.ts           static1 URL → media:// 주소, 썸네일/샘플/원본/동영상 선택
       platform.ts        OS 판별, 단축키 표기
       i18n/              en.ts(기준), ko.ts, 현재 언어 상태
