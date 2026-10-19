@@ -9,7 +9,7 @@ function systemLocale(): Locale {
   return navigator.language.toLowerCase().startsWith("ko") ? "ko" : "en";
 }
 
-let locale = $state<Locale>(systemLocale());
+let locale = $state<Locale>("en");
 
 export function currentLocale(): Locale {
   return locale;
@@ -25,4 +25,4 @@ export function m(): Messages {
   return catalogs[locale];
 }
 
-setLocale(locale);
+setLocale(systemLocale());
