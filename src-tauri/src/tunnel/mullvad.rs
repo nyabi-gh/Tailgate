@@ -66,7 +66,10 @@ impl Mullvad {
         Ok(checked(response).await?.json::<Token>().await?.access_token)
     }
 
-    pub async fn register_device(&self, access_token: &str) -> Result<RegisteredDevice, MullvadError> {
+    pub async fn register_device(
+        &self,
+        access_token: &str,
+    ) -> Result<RegisteredDevice, MullvadError> {
         #[derive(Deserialize)]
         struct Created {
             id: String,
@@ -91,11 +94,22 @@ impl Mullvad {
             .split('/')
             .next()
             .and_then(|ip| ip.parse().ok())
-            .ok_or_else(|| MullvadError::Response(format!("bad tunnel address {}", created.ipv4_address)))?;
-        Ok(RegisteredDevice { id: created.id, name: created.name, private_key: STANDARD.encode(secret), ipv4 })
+            .ok_or_else(|| {
+                MullvadError::Response(format!("bad tunnel address {}", created.ipv4_address))
+            })?;
+        Ok(RegisteredDevice {
+            id: created.id,
+            name: created.name,
+            private_key: STANDARD.encode(secret),
+            ipv4,
+        })
     }
 
-    pub async fn remove_device(&self, access_token: &str, device_id: &str) -> Result<(), MullvadError> {
+    pub async fn remove_device(
+        &self,
+        access_token: &str,
+        device_id: &str,
+    ) -> Result<(), MullvadError> {
         let response = self
             .http
             .delete(format!("{API}/accounts/v1/devices/{device_id}"))
@@ -115,7 +129,12 @@ impl Mullvad {
             relays: Vec<Relay>,
         }
         let response = self.http.get(format!("{API}/app/v1/relays")).send().await?;
-        Ok(checked(response).await?.json::<RelayList>().await?.wireguard.relays)
+        Ok(checked(response)
+            .await?
+            .json::<RelayList>()
+            .await?
+            .wireguard
+            .relays)
     }
 }
 
@@ -123,8 +142,10 @@ impl RegisteredDevice {
     pub fn tunnel_config(&self, relay: &Relay) -> Result<TunnelConfig, MullvadError> {
         let private_key = super::config::parse_key("PrivateKey", &self.private_key)
             .map_err(|error| MullvadError::Response(error.to_string()))?;
-        let peer_public_key = super::config::parse_key("PublicKey", &relay.public_key)
-            .map_err(|error| MullvadError::Response(format!("relay {}: {error}", relay.hostname)))?;
+        let peer_public_key =
+            super::config::parse_key("PublicKey", &relay.public_key).map_err(|error| {
+                MullvadError::Response(format!("relay {}: {error}", relay.hostname))
+            })?;
         Ok(TunnelConfig {
             private_key,
             address: self.ipv4,

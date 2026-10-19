@@ -49,11 +49,10 @@ impl IpRecv for FromStack {
         &'a mut self,
         _pool: &mut PacketBufPool,
     ) -> io::Result<impl Iterator<Item = Packet<Ip>> + Send + 'a> {
-        let first = self
-            .queue
-            .recv()
-            .await
-            .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "network stack stopped"))?;
+        let first =
+            self.queue.recv().await.ok_or_else(|| {
+                io::Error::new(io::ErrorKind::UnexpectedEof, "network stack stopped")
+            })?;
         let rest = iter::from_fn(|| self.queue.try_recv().ok()).take(MAX_BATCH - 1);
         // smoltcp only emits well-formed IPv4 packets, so a parse failure cannot happen in practice;
         // gotatun's own TUN reader drops unparsable packets the same way.
@@ -84,7 +83,13 @@ pub async fn start(
 
     DeviceBuilder::new()
         .with_default_udp()
-        .with_ip_pair(ToStack { queue: to_stack, stack }, FromStack { queue: from_stack })
+        .with_ip_pair(
+            ToStack {
+                queue: to_stack,
+                stack,
+            },
+            FromStack { queue: from_stack },
+        )
         .with_private_key(StaticSecret::from(config.private_key))
         .with_peer(peer)
         .build()

@@ -64,7 +64,11 @@ impl NetStack {
         let (outbound, from_stack) = mpsc::unbounded_channel();
         let mut device = PacketQueues { inbound, outbound };
 
-        let mut iface = Interface::new(Config::new(HardwareAddress::Ip), &mut device, Instant::now());
+        let mut iface = Interface::new(
+            Config::new(HardwareAddress::Ip),
+            &mut device,
+            Instant::now(),
+        );
         iface.update_ip_addrs(|addrs| {
             addrs
                 .push(IpCidr::new(IpAddress::Ipv4(address), 32))
@@ -91,7 +95,13 @@ impl NetStack {
             }),
             wake: Notify::new(),
         });
-        (stack, PacketPorts { to_stack, from_stack })
+        (
+            stack,
+            PacketPorts {
+                to_stack,
+                from_stack,
+            },
+        )
     }
 
     /// Runs the stack until the returned future is dropped.
@@ -115,7 +125,12 @@ impl NetStack {
         }
         let query = {
             let mut state = self.lock();
-            let State { iface, sockets, dns, .. } = &mut *state;
+            let State {
+                iface,
+                sockets,
+                dns,
+                ..
+            } = &mut *state;
             sockets
                 .get_mut::<dns::Socket>(*dns)
                 .start_query(iface.context(), host, DnsQueryType::A)
@@ -149,8 +164,14 @@ impl NetStack {
             Err(_) => {
                 let mut state = self.lock();
                 let dns = state.dns;
-                state.sockets.get_mut::<dns::Socket>(dns).cancel_query(query);
-                return Err(io::Error::new(io::ErrorKind::TimedOut, format!("DNS lookup timed out for {host}")));
+                state
+                    .sockets
+                    .get_mut::<dns::Socket>(dns)
+                    .cancel_query(query);
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    format!("DNS lookup timed out for {host}"),
+                ));
             }
         };
         addresses
@@ -158,12 +179,20 @@ impl NetStack {
             .find_map(|address| match address {
                 IpAddress::Ipv4(ip) => Some(*ip),
             })
-            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("no IPv4 address for {host}")))
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("no IPv4 address for {host}"),
+                )
+            })
     }
 
     pub async fn connect(self: &Arc<Self>, address: SocketAddr) -> io::Result<TcpStream> {
         let IpAddr::V4(ip) = address.ip() else {
-            return Err(io::Error::new(io::ErrorKind::Unsupported, "the tunnel only carries IPv4"));
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "the tunnel only carries IPv4",
+            ));
         };
         let handle = {
             let mut state = self.lock();
@@ -176,12 +205,19 @@ impl NetStack {
             let local_port = state.take_port();
             let State { iface, .. } = &mut *state;
             socket
-                .connect(iface.context(), (IpAddress::Ipv4(ip), address.port()), local_port)
+                .connect(
+                    iface.context(),
+                    (IpAddress::Ipv4(ip), address.port()),
+                    local_port,
+                )
                 .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error.to_string()))?;
             state.sockets.add(socket)
         };
         // From here on, dropping the stream closes and reaps the socket.
-        let stream = TcpStream { stack: Arc::clone(self), handle };
+        let stream = TcpStream {
+            stack: Arc::clone(self),
+            handle,
+        };
         self.notify();
 
         let established = poll_fn(|cx| {
@@ -201,7 +237,10 @@ impl NetStack {
         });
         match tokio::time::timeout(CONNECT_TIMEOUT, established).await {
             Ok(result) => result.map(|()| stream),
-            Err(_) => Err(io::Error::new(io::ErrorKind::TimedOut, format!("connection to {address} timed out"))),
+            Err(_) => Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("connection to {address} timed out"),
+            )),
         }
     }
 
@@ -228,7 +267,10 @@ impl State {
     fn reap_closed(&mut self) {
         let sockets = &mut self.sockets;
         self.closing.retain(|&handle| {
-            let done = matches!(sockets.get::<tcp::Socket>(handle).state(), tcp::State::Closed | tcp::State::TimeWait);
+            let done = matches!(
+                sockets.get::<tcp::Socket>(handle).state(),
+                tcp::State::Closed | tcp::State::TimeWait
+            );
             if done {
                 sockets.remove(handle);
             }
@@ -238,7 +280,11 @@ impl State {
 
     fn take_port(&mut self) -> u16 {
         let port = self.next_port;
-        self.next_port = if port == u16::MAX { EPHEMERAL_PORTS_START } else { port + 1 };
+        self.next_port = if port == u16::MAX {
+            EPHEMERAL_PORTS_START
+        } else {
+            port + 1
+        };
         port
     }
 }
@@ -264,12 +310,18 @@ impl TcpStream {
 }
 
 impl AsyncRead for TcpStream {
-    fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
         let result = self.with_socket(|socket| {
             if socket.can_recv() {
                 let read = socket
                     .recv_slice(buf.initialize_unfilled())
-                    .map_err(|error| io::Error::new(io::ErrorKind::ConnectionReset, error.to_string()))?;
+                    .map_err(|error| {
+                        io::Error::new(io::ErrorKind::ConnectionReset, error.to_string())
+                    })?;
                 buf.advance(read);
                 Poll::Ready(Ok(true))
             } else if !socket.may_recv() {
@@ -288,21 +340,24 @@ impl AsyncRead for TcpStream {
 }
 
 impl AsyncWrite for TcpStream {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, data: &[u8]) -> Poll<io::Result<usize>> {
-        let result = self.with_socket(|socket| {
-            if socket.can_send() {
-                Poll::Ready(
-                    socket
-                        .send_slice(data)
-                        .map_err(|error| io::Error::new(io::ErrorKind::BrokenPipe, error.to_string())),
-                )
-            } else if !socket.may_send() {
-                Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()))
-            } else {
-                socket.register_send_waker(cx.waker());
-                Poll::Pending
-            }
-        });
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        data: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        let result =
+            self.with_socket(|socket| {
+                if socket.can_send() {
+                    Poll::Ready(socket.send_slice(data).map_err(|error| {
+                        io::Error::new(io::ErrorKind::BrokenPipe, error.to_string())
+                    }))
+                } else if !socket.may_send() {
+                    Poll::Ready(Err(io::ErrorKind::BrokenPipe.into()))
+                } else {
+                    socket.register_send_waker(cx.waker());
+                    Poll::Pending
+                }
+            });
         if let Poll::Ready(Ok(_)) = result {
             self.stack.notify();
         }

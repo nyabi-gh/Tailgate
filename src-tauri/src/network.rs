@@ -15,7 +15,11 @@ use crate::{
     },
 };
 
-pub const USER_AGENT: &str = concat!("Tailgate/", env!("CARGO_PKG_VERSION"), " (by Nyabi on e621)");
+pub const USER_AGENT: &str = concat!(
+    "Tailgate/",
+    env!("CARGO_PKG_VERSION"),
+    " (by Nyabi on e621)"
+);
 
 /// Until the connection settings screen exists (report §11, step 9), the relay is fixed.
 const DEFAULT_RELAY_LOCATION: &str = "jp-tyo";
@@ -51,10 +55,18 @@ impl Network {
         let socks = SocksServer::bind(route).await?;
         let http = reqwest::Client::builder()
             .user_agent(USER_AGENT)
-            .proxy(reqwest::Proxy::all(format!("socks5h://{}", socks.address())).map_err(std::io::Error::other)?)
+            .proxy(
+                reqwest::Proxy::all(format!("socks5h://{}", socks.address()))
+                    .map_err(std::io::Error::other)?,
+            )
             .build()
             .map_err(std::io::Error::other)?;
-        Ok(Self { socks, http, tunnel: Mutex::new(None), connection: watch::Sender::new(connection) })
+        Ok(Self {
+            socks,
+            http,
+            tunnel: Mutex::new(None),
+            connection: watch::Sender::new(connection),
+        })
     }
 
     pub fn http(&self) -> &reqwest::Client {
@@ -74,7 +86,9 @@ impl Network {
     pub async fn connect_saved(&self) {
         if let Err(error) = self.try_connect_saved().await {
             tracing::error!("tunnel failed to start: {error}");
-            self.connection.send_replace(Connection::Failed { reason: error.to_string() });
+            self.connection.send_replace(Connection::Failed {
+                reason: error.to_string(),
+            });
         }
     }
 
@@ -94,7 +108,9 @@ impl Network {
         let tunnel = Tunnel::start(&device.tunnel_config(relay)?).await?;
         self.socks.set_route(Route::Tunnel(tunnel.stack().clone()));
         tracing::info!("tunnel up via {}", relay.hostname);
-        self.connection.send_replace(Connection::Tunnel { relay: relay.hostname.clone() });
+        self.connection.send_replace(Connection::Tunnel {
+            relay: relay.hostname.clone(),
+        });
         if let Some(previous) = self.tunnel.lock().await.replace(tunnel) {
             previous.stop().await;
         }

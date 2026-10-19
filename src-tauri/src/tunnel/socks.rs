@@ -36,7 +36,11 @@ impl SocksServer {
         let address = listener.local_addr()?;
         let route = Arc::new(RwLock::new(route));
         let acceptor = tokio::spawn(accept_loop(listener, Arc::clone(&route)));
-        Ok(Self { address, route, acceptor })
+        Ok(Self {
+            address,
+            route,
+            acceptor,
+        })
     }
 
     pub fn address(&self) -> SocketAddr {
@@ -98,7 +102,10 @@ async fn serve(mut client: TcpStream, route: Route) -> io::Result<()> {
     client.read_exact(&mut methods).await?;
     if header[0] != VERSION || !methods.contains(&NO_AUTH) {
         client.write_all(&[VERSION, NO_ACCEPTABLE_METHOD]).await?;
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "unsupported SOCKS greeting"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "unsupported SOCKS greeting",
+        ));
     }
     client.write_all(&[VERSION, NO_AUTH]).await?;
 
@@ -117,7 +124,8 @@ async fn serve(mut client: TcpStream, route: Route) -> io::Result<()> {
             let length = client.read_u8().await?;
             let mut name = vec![0u8; length as usize];
             client.read_exact(&mut name).await?;
-            String::from_utf8(name).map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "host is not UTF-8"))?
+            String::from_utf8(name)
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "host is not UTF-8"))?
         }
         4 => {
             let mut octets = [0u8; 16];
@@ -133,7 +141,9 @@ async fn serve(mut client: TcpStream, route: Route) -> io::Result<()> {
         Route::Direct => match TcpStream::connect((host.as_str(), port)).await {
             Ok(mut upstream) => {
                 reply(&mut client, Reply::Succeeded).await?;
-                copy_bidirectional(&mut client, &mut upstream).await.map(|_| ())
+                copy_bidirectional(&mut client, &mut upstream)
+                    .await
+                    .map(|_| ())
             }
             Err(error) => {
                 reply(&mut client, reply_for(&error)).await?;
@@ -174,5 +184,7 @@ fn reply_for(error: &io::Error) -> Reply {
 
 async fn reply(client: &mut TcpStream, code: Reply) -> io::Result<()> {
     // The bound address is meaningless for a CONNECT relay, so it is reported as 0.0.0.0:0.
-    client.write_all(&[VERSION, code as u8, 0, 1, 0, 0, 0, 0, 0, 0]).await
+    client
+        .write_all(&[VERSION, code as u8, 0, 1, 0, 0, 0, 0, 0, 0])
+        .await
 }

@@ -53,7 +53,9 @@ impl TunnelConfig {
                 seen_peer |= section == "peer";
                 continue;
             }
-            let Some((key, value)) = line.split_once('=') else { continue };
+            let Some((key, value)) = line.split_once('=') else {
+                continue;
+            };
             let (key, value) = (key.trim().to_ascii_lowercase(), value.trim());
 
             match (section, key.as_str()) {
@@ -103,7 +105,10 @@ fn first_ipv4(key: &'static str, value: &str) -> Result<Ipv4Addr, ConfigError> {
 }
 
 fn invalid(key: &'static str, value: &str) -> ConfigError {
-    ConfigError::Invalid { key, value: value.to_string() }
+    ConfigError::Invalid {
+        key,
+        value: value.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -140,7 +145,10 @@ mod tests {
         assert_eq!(config.dns, Ipv4Addr::new(10, 64, 0, 1));
         assert_eq!(config.endpoint, "146.70.1.1:51820");
         assert_eq!(config.keepalive, Some(25));
-        assert_eq!(config.peer_public_key, parse_key("PublicKey", KEY_B).unwrap());
+        assert_eq!(
+            config.peer_public_key,
+            parse_key("PublicKey", KEY_B).unwrap()
+        );
         assert_eq!(config.preshared_key, None);
     }
 
@@ -163,7 +171,10 @@ mod tests {
     #[test]
     fn reports_missing_dns() {
         let text = sample().replace("DNS = 10.64.0.1\n", "");
-        assert_eq!(TunnelConfig::parse_wg_quick(&text).err(), Some(ConfigError::Missing("DNS")));
+        assert_eq!(
+            TunnelConfig::parse_wg_quick(&text).err(),
+            Some(ConfigError::Missing("DNS"))
+        );
     }
 
     #[test]
@@ -171,7 +182,10 @@ mod tests {
         let text = sample().replace(KEY_A, "short");
         assert!(matches!(
             TunnelConfig::parse_wg_quick(&text),
-            Err(ConfigError::Invalid { key: "PrivateKey", .. })
+            Err(ConfigError::Invalid {
+                key: "PrivateKey",
+                ..
+            })
         ));
     }
 }

@@ -34,12 +34,25 @@ impl Tunnel {
             .await
             .map_err(TunnelError::Endpoint)?
             .find(|address| address.is_ipv4())
-            .ok_or_else(|| TunnelError::Endpoint(io::Error::new(io::ErrorKind::NotFound, "no IPv4 address")))?;
+            .ok_or_else(|| {
+                TunnelError::Endpoint(io::Error::new(io::ErrorKind::NotFound, "no IPv4 address"))
+            })?;
 
         let (stack, ports) = NetStack::new(config.address, config.dns);
-        let device = wg::start(config, endpoint, Arc::clone(&stack), ports.to_stack, ports.from_stack).await?;
+        let device = wg::start(
+            config,
+            endpoint,
+            Arc::clone(&stack),
+            ports.to_stack,
+            ports.from_stack,
+        )
+        .await?;
         let driver = tokio::spawn(Arc::clone(&stack).drive());
-        Ok(Self { stack, device, driver })
+        Ok(Self {
+            stack,
+            device,
+            driver,
+        })
     }
 
     pub fn stack(&self) -> &Arc<NetStack> {

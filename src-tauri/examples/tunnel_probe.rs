@@ -29,11 +29,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().skip(1).collect();
     let serve = args.iter().any(|arg| arg == "--serve");
     let forget = args.iter().any(|arg| arg == "--forget");
-    let location = args.iter().find(|arg| !arg.starts_with("--")).map_or("jp-tyo", String::as_str);
+    let location = args
+        .iter()
+        .find(|arg| !arg.starts_with("--"))
+        .map_or("jp-tyo", String::as_str);
 
     secrets::init()?;
-    let account = secrets::get(secrets::MULLVAD_ACCOUNT)?
-        .ok_or("no `mullvad-account` entry in the credential store (service pro.tb.nyabi.Tailgate)")?;
+    let account = secrets::get(secrets::MULLVAD_ACCOUNT)?.ok_or(
+        "no `mullvad-account` entry in the credential store (service pro.tb.nyabi.Tailgate)",
+    )?;
     let mullvad = Mullvad::new(reqwest::Client::builder().user_agent(USER_AGENT).build()?);
 
     let stored = secrets::get(secrets::MULLVAD_DEVICE)?;
@@ -71,15 +75,27 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let started = Instant::now();
     let tunnel = Tunnel::start(&device.tunnel_config(relay)?).await?;
     let socks = SocksServer::bind(Route::Tunnel(tunnel.stack().clone())).await?;
-    println!("tunnel up in {:?}, SOCKS5 at {}", started.elapsed(), socks.address());
+    println!(
+        "tunnel up in {:?}, SOCKS5 at {}",
+        started.elapsed(),
+        socks.address()
+    );
 
     let client = reqwest::Client::builder()
         .user_agent(USER_AGENT)
-        .proxy(reqwest::Proxy::all(format!("socks5h://{}", socks.address()))?)
+        .proxy(reqwest::Proxy::all(format!(
+            "socks5h://{}",
+            socks.address()
+        ))?)
         .build()?;
 
     let started = Instant::now();
-    let ip: serde_json::Value = client.get("https://am.i.mullvad.net/json").send().await?.json().await?;
+    let ip: serde_json::Value = client
+        .get("https://am.i.mullvad.net/json")
+        .send()
+        .await?
+        .json()
+        .await?;
     println!(
         "exit check in {:?}: ip {} via mullvad={} ({})",
         started.elapsed(),
@@ -89,18 +105,34 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
 
     let started = Instant::now();
-    let response = client.get("https://e621.net/posts.json?limit=5&tags=rating:s").send().await?;
+    let response = client
+        .get("https://e621.net/posts.json?limit=5&tags=rating:s")
+        .send()
+        .await?;
     let status = response.status();
     let body: serde_json::Value = response.json().await?;
     println!("e621 API {status} in {:?}", started.elapsed());
     let posts = body["posts"].as_array().cloned().unwrap_or_default();
     for post in &posts {
-        println!("  post {} {}x{} {}", post["id"], post["file"]["width"], post["file"]["height"], post["file"]["ext"]);
+        println!(
+            "  post {} {}x{} {}",
+            post["id"], post["file"]["width"], post["file"]["height"], post["file"]["ext"]
+        );
     }
 
-    if let Some(url) = posts.iter().filter_map(|post| post["file"]["url"].as_str()).next() {
+    if let Some(url) = posts
+        .iter()
+        .filter_map(|post| post["file"]["url"].as_str())
+        .next()
+    {
         let started = Instant::now();
-        let bytes = client.get(url).send().await?.error_for_status()?.bytes().await?;
+        let bytes = client
+            .get(url)
+            .send()
+            .await?
+            .error_for_status()?
+            .bytes()
+            .await?;
         let seconds = started.elapsed().as_secs_f64();
         println!(
             "original file {:.1} MB in {:.2}s = {:.2} MB/s",
@@ -112,9 +144,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     if let Some(url) = env::var("PROBE_DOWNLOAD").ok() {
         let started = Instant::now();
-        let bytes = client.get(&url).send().await?.error_for_status()?.bytes().await?;
+        let bytes = client
+            .get(&url)
+            .send()
+            .await?
+            .error_for_status()?
+            .bytes()
+            .await?;
         let seconds = started.elapsed().as_secs_f64();
-        println!("PROBE_DOWNLOAD {:.1} MB in {:.2}s = {:.2} MB/s", bytes.len() as f64 / 1e6, seconds, bytes.len() as f64 / 1e6 / seconds);
+        println!(
+            "PROBE_DOWNLOAD {:.1} MB in {:.2}s = {:.2} MB/s",
+            bytes.len() as f64 / 1e6,
+            seconds,
+            bytes.len() as f64 / 1e6 / seconds
+        );
     }
 
     if serve {
