@@ -69,11 +69,11 @@ impl NetStack {
         let (outbound, from_stack) = mpsc::unbounded_channel();
         let mut device = PacketQueues { inbound, outbound };
 
-        let mut iface = Interface::new(
-            Config::new(HardwareAddress::Ip),
-            &mut device,
-            Instant::now(),
-        );
+        let mut config = Config::new(HardwareAddress::Ip);
+        // TCP initial sequence numbers and DNS query IDs come from this seed; smoltcp's default of
+        // 0 would repeat them on every launch.
+        config.random_seed = getrandom::u64().expect("the OS random source is unavailable");
+        let mut iface = Interface::new(config, &mut device, Instant::now());
         iface.update_ip_addrs(|addrs| {
             addrs
                 .push(IpCidr::new(IpAddress::Ipv4(address), 32))
@@ -429,5 +429,36 @@ impl phy::TxToken for TxToken<'_> {
         // The receiver only goes away when the tunnel is shutting down; the packet is moot then.
         let _ = self.0.send(packet);
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use smoltcp::wire::{Ipv4Packet, TcpPacket};
+
+    use super::*;
+
+    /// The sequence number in the SYN a fresh stack sends for its first connection.
+    async fn first_syn_sequence_number() -> i32 {
+        let (stack, mut ports) =
+            NetStack::new(Ipv4Addr::new(10, 0, 0, 2), Ipv4Addr::new(10, 0, 0, 1));
+        let driver = tokio::spawn(Arc::clone(&stack).drive());
+        let syn = tokio::select! {
+            packet = ports.from_stack.recv() => packet.expect("the stack sends a SYN"),
+            _ = stack.connect(SocketAddr::from(([10, 0, 0, 1], 80))) => {
+                unreachable!("nothing answers, so the connection cannot finish first")
+            }
+        };
+        driver.abort();
+        let ip = Ipv4Packet::new_checked(&syn[..]).unwrap();
+        TcpPacket::new_checked(ip.payload()).unwrap().seq_number().0
+    }
+
+    #[tokio::test]
+    async fn stacks_do_not_share_initial_sequence_numbers() {
+        assert_ne!(
+            first_syn_sequence_number().await,
+            first_syn_sequence_number().await
+        );
     }
 }
