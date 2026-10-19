@@ -1,11 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+/** Mirrors `FailureCode` in src-tauri/src/network.rs. */
+export type ConnectionFailure = "credentialStore" | "savedDevice" | "relayList" | "noRelay" | "tunnel";
+
 export type Connection =
   | { state: "direct" }
   | { state: "connecting" }
   | { state: "tunnel"; relay: string }
-  | { state: "failed"; reason: string };
+  | { state: "failed"; code: ConnectionFailure };
 
 let current = $state<Connection>({ state: "connecting" });
 

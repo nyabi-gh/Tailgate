@@ -1,16 +1,14 @@
 //! Owns the loopback SOCKS proxy that every e621 request of the app goes through, and the in-app
 //! tunnel behind it when one is configured.
 
-use std::error::Error;
-
 use serde::Serialize;
 use tokio::sync::{Mutex, watch};
 
 use crate::{
     secrets,
     tunnel::{
-        Tunnel,
-        mullvad::{Mullvad, RegisteredDevice},
+        Tunnel, TunnelError,
+        mullvad::{Mullvad, MullvadError, RegisteredDevice},
         socks::{Route, SocksServer},
     },
 };
@@ -21,38 +19,73 @@ pub const USER_AGENT: &str = concat!(
     " (by Nyabi on e621)"
 );
 
-/// Until the connection settings screen exists (report §11, step 9), the relay is fixed.
+/// Until the connection settings screen exists (report §12, step 9), the relay is fixed.
 const DEFAULT_RELAY_LOCATION: &str = "jp-tyo";
 
 /// What the UI needs to know before it may load anything remote.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum Connection {
     Direct,
     Connecting,
     Tunnel { relay: String },
-    Failed { reason: String },
+    Failed { code: FailureCode },
+}
+
+/// Why no route could be opened. The UI words it; the details only go to the log.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FailureCode {
+    CredentialStore,
+    SavedDevice,
+    RelayList,
+    NoRelay,
+    Tunnel,
+}
+
+#[derive(Debug, thiserror::Error)]
+enum ConnectError {
+    #[error("could not read the credential store: {0}")]
+    CredentialStore(#[from] keyring_core::Error),
+    #[error("the saved Mullvad device is unreadable: {0}")]
+    SavedDevice(#[from] serde_json::Error),
+    #[error("could not get the relay list: {0}")]
+    RelayList(MullvadError),
+    #[error("no active relay at {0}")]
+    NoRelay(&'static str),
+    #[error("could not configure the tunnel: {0}")]
+    TunnelConfig(MullvadError),
+    #[error(transparent)]
+    Tunnel(#[from] TunnelError),
+}
+
+impl ConnectError {
+    fn code(&self) -> FailureCode {
+        match self {
+            Self::CredentialStore(_) => FailureCode::CredentialStore,
+            Self::SavedDevice(_) => FailureCode::SavedDevice,
+            Self::RelayList(_) => FailureCode::RelayList,
+            Self::NoRelay(_) => FailureCode::NoRelay,
+            Self::TunnelConfig(_) | Self::Tunnel(_) => FailureCode::Tunnel,
+        }
+    }
 }
 
 pub struct Network {
     socks: SocksServer,
     /// Every request to e621 goes through this client, and so through the proxy and its route.
     http: reqwest::Client,
+    /// Talks to Mullvad directly: these calls are what sets up the route the proxy would need.
+    mullvad: Mullvad,
     tunnel: Mutex<Option<Tunnel>>,
     connection: watch::Sender<Connection>,
 }
 
 impl Network {
-    /// Binds the proxy. With a saved Mullvad device it starts out blocked, so nothing leaks
-    /// directly before [`Network::connect_saved`] brings the tunnel up.
+    /// Binds the proxy blocked: nothing goes out until [`Network::connect_saved`] has read the
+    /// saved settings and opened a route.
     pub async fn start() -> std::io::Result<Self> {
-        let has_device = matches!(secrets::get(secrets::MULLVAD_DEVICE), Ok(Some(_)));
-        let (route, connection) = if has_device {
-            (Route::Blocked, Connection::Connecting)
-        } else {
-            (Route::Direct, Connection::Direct)
-        };
-        let socks = SocksServer::bind(route).await?;
+        let socks = SocksServer::bind(Route::Blocked).await?;
         let http = reqwest::Client::builder()
             .user_agent(USER_AGENT)
             .proxy(
@@ -61,11 +94,18 @@ impl Network {
             )
             .build()
             .map_err(std::io::Error::other)?;
+        let mullvad = Mullvad::new(
+            reqwest::Client::builder()
+                .user_agent(USER_AGENT)
+                .build()
+                .map_err(std::io::Error::other)?,
+        );
         Ok(Self {
             socks,
             http,
+            mullvad,
             tunnel: Mutex::new(None),
-            connection: watch::Sender::new(connection),
+            connection: watch::Sender::new(Connection::Connecting),
         })
     }
 
@@ -81,31 +121,42 @@ impl Network {
         self.connection.subscribe()
     }
 
-    /// Brings up the tunnel for the saved Mullvad device, if any. On failure the proxy stays
-    /// blocked and the failure is published as the connection state.
+    /// Opens the route the saved settings ask for: the tunnel for a saved Mullvad device, direct
+    /// when there is none. Any failure leaves the proxy blocked and is published as the
+    /// connection state; nothing falls back to a direct connection.
     pub async fn connect_saved(&self) {
         if let Err(error) = self.try_connect_saved().await {
-            tracing::error!("tunnel failed to start: {error}");
-            self.connection.send_replace(Connection::Failed {
-                reason: error.to_string(),
-            });
+            tracing::error!("could not connect: {error}");
+            self.connection
+                .send_replace(Connection::Failed { code: error.code() });
         }
     }
 
-    async fn try_connect_saved(&self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let Some(device) = secrets::get(secrets::MULLVAD_DEVICE)? else {
+    async fn try_connect_saved(&self) -> Result<(), ConnectError> {
+        // On macOS this can wait for the user to answer a keychain access prompt.
+        let saved = tokio::task::spawn_blocking(|| secrets::get(secrets::MULLVAD_DEVICE))
+            .await
+            .expect("reading the credential store panicked")?;
+        let Some(device) = saved else {
+            self.socks.set_route(Route::Direct);
+            self.connection.send_replace(Connection::Direct);
             return Ok(());
         };
         let device: RegisteredDevice = serde_json::from_str(&device)?;
-        // Talks to Mullvad directly: this is what sets up the route the proxy would need.
-        let mullvad = Mullvad::new(reqwest::Client::builder().user_agent(USER_AGENT).build()?);
-        let relays = mullvad.relays().await?;
+        let relays = self
+            .mullvad
+            .relays()
+            .await
+            .map_err(ConnectError::RelayList)?;
         let relay = relays
             .iter()
             .find(|relay| relay.active && relay.location.starts_with(DEFAULT_RELAY_LOCATION))
-            .ok_or("no active relay at the default location")?;
+            .ok_or(ConnectError::NoRelay(DEFAULT_RELAY_LOCATION))?;
+        let config = device
+            .tunnel_config(relay)
+            .map_err(ConnectError::TunnelConfig)?;
 
-        let tunnel = Tunnel::start(&device.tunnel_config(relay)?).await?;
+        let tunnel = Tunnel::start(&config).await?;
         self.socks.set_route(Route::Tunnel(tunnel.stack().clone()));
         tracing::info!("tunnel up via {}", relay.hostname);
         self.connection.send_replace(Connection::Tunnel {
@@ -115,5 +166,104 @@ impl Network {
             previous.stop().await;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::Ipv4Addr;
+
+    use keyring_core::{Entry, mock};
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
+
+    use super::*;
+
+    /// The default credential store is process-wide, so the tests that set one take turns.
+    static CREDENTIAL_STORE: Mutex<()> = Mutex::const_new(());
+
+    /// Installs an empty mock store and returns the entry the saved device lives in.
+    fn mock_store() -> Entry {
+        keyring_core::set_default_store(mock::Store::new().unwrap());
+        Entry::new(secrets::SERVICE, secrets::MULLVAD_DEVICE).unwrap()
+    }
+
+    /// Whether a request through the app's client gets to a server on this machine, which only
+    /// an open route allows.
+    async fn reaches_local_server(network: &Network) -> bool {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            // Reading the request first keeps the close from turning into a reset.
+            let mut request = Vec::new();
+            let mut buffer = [0; 1024];
+            while !request.ends_with(b"\r\n\r\n") {
+                let read = stream.read(&mut buffer).await.unwrap();
+                assert_ne!(read, 0, "the client closed before finishing its request");
+                request.extend_from_slice(&buffer[..read]);
+            }
+            stream
+                .write_all(b"HTTP/1.1 204 No Content\r\nconnection: close\r\n\r\n")
+                .await
+                .unwrap();
+        });
+        network
+            .http()
+            .get(format!("http://{address}/"))
+            .send()
+            .await
+            .is_ok()
+    }
+
+    #[tokio::test]
+    async fn starts_blocked() {
+        let network = Network::start().await.unwrap();
+        assert_eq!(network.connection(), Connection::Connecting);
+        assert!(!reaches_local_server(&network).await);
+    }
+
+    #[tokio::test]
+    async fn opens_direct_when_no_device_is_saved() {
+        let _store = CREDENTIAL_STORE.lock().await;
+        mock_store();
+        let network = Network::start().await.unwrap();
+        network.connect_saved().await;
+        assert_eq!(network.connection(), Connection::Direct);
+        assert!(reaches_local_server(&network).await);
+    }
+
+    #[tokio::test]
+    async fn stays_blocked_when_the_credential_store_fails() {
+        let _store = CREDENTIAL_STORE.lock().await;
+        let entry = mock_store();
+        let credential: &mock::Cred = entry.as_any().downcast_ref().unwrap();
+        credential.set_error(keyring_core::Error::NoStorageAccess("access denied".into()));
+        let network = Network::start().await.unwrap();
+        network.connect_saved().await;
+        assert_eq!(
+            network.connection(),
+            Connection::Failed {
+                code: FailureCode::CredentialStore
+            }
+        );
+        assert!(!reaches_local_server(&network).await);
+    }
+
+    #[tokio::test]
+    async fn stays_blocked_when_the_saved_device_is_unreadable() {
+        let _store = CREDENTIAL_STORE.lock().await;
+        mock_store().set_password("not a device").unwrap();
+        let network = Network::start().await.unwrap();
+        network.connect_saved().await;
+        assert_eq!(
+            network.connection(),
+            Connection::Failed {
+                code: FailureCode::SavedDevice
+            }
+        );
+        assert!(!reaches_local_server(&network).await);
     }
 }

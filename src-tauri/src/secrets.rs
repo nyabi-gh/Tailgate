@@ -2,7 +2,7 @@
 
 use keyring_core::{Entry, Error};
 
-const SERVICE: &str = "pro.tb.nyabi.Tailgate";
+pub(crate) const SERVICE: &str = "pro.tb.nyabi.Tailgate";
 
 pub const MULLVAD_ACCOUNT: &str = "mullvad-account";
 pub const MULLVAD_DEVICE: &str = "mullvad-device";
