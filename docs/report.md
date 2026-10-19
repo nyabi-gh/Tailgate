@@ -99,6 +99,7 @@ tailgate/
       download.rs        원본 다운로드, 파일명 규칙
     examples/
       tunnel_probe.rs    실제 Mullvad 서버로 터널을 검증하는 수동 점검 도구
+      api_probe.rs       앱과 같은 경로로 실제 e621 API를 불러 응답 구조를 확인하는 수동 점검 도구
     tests/fixtures/      Pawru 픽스처 재사용 (실제 응답 JSON)
   src/                   Svelte 5 + TypeScript
     lib/
