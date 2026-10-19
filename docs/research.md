@@ -1,6 +1,8 @@
-# 조사 결과 (2026-10-19 기준, 같은 날 실측으로 7절 추가)
+# 조사 결과
 
-"확인"은 1차 자료(레지스트리, 공식 문서, 실제 요청)에서 직접 본 내용이다. "미확인"은 알려져 있지만 원문이나 실측으로 확인하지 못한 내용이다.
+2026-10-19 기준. 1~6절은 구현 전 조사, 7절은 구현하며 잰 실측, 8절은 재검토 때 의존성 소스와 실측으로 확인한 동작이다. 계획은 [report.md](report.md), 진행 상황은 [status.md](status.md).
+
+"확인"은 1차 자료(레지스트리, 공식 문서, 소스, 실제 요청)에서 직접 본 내용이다. "미확인"은 알려져 있지만 원문이나 실측으로 확인하지 못한 내용이다. 나중에 사실이 아니게 된 내용은 지우지 않고 바뀐 내용을 함께 적는다.
 
 ## 0. 로컬 개발 환경 (확인)
 
@@ -13,9 +15,10 @@
 - `e621.net`은 이 네트워크에서 **TLS ClientHello 직후 연결이 리셋된다.** DNS는 정상이고, 같은 IP에 다른 SNI로 접속하면 정상 응답한다. 즉 SNI 기반 차단이다.
 - `static1.e621.net`(이미지·동영상 파일)은 **정상 접속된다.**
   - 썸네일 요청은 Referer가 없거나 `tauri://localhost/`여도 200을 준다. **단, 이 시험에는 브라우저의 `Sec-Fetch-*` 헤더가 빠져 있었다. 실제 웹뷰 요청은 403이다(7절).**
-  - 동영상은 Range 요청에 206을 준다. 웹뷰 `<video>`가 그대로 스트리밍할 수 있다.
-  - `cache-control: max-age=2678400`(31일)이라 웹뷰 HTTP 캐시가 잘 먹는다.
-  - `access-control-allow-origin: https://e621.net`이라 **JS `fetch`나 canvas로는 읽을 수 없다.** `<img>`/`<video>` 표시는 문제없다.
+  - 동영상은 Range 요청에 206을 준다.
+  - `cache-control: max-age=2678400`(31일)이다.
+  - `access-control-allow-origin: https://e621.net`이라 웹뷰가 직접 받으면 JS `fetch`나 canvas로는 읽을 수 없다.
+  - **이 세 줄은 웹뷰가 static1을 직접 받는다는 처음 계획을 전제로 했다.** 지금은 미디어가 `media://`를 거치므로 웹뷰 HTTP 캐시는 적용되지 않고(캐시는 앱이 갖는다, report.md 7.3절), 동영상 Range는 7절의 문제가 있다. CORS 헤더는 앱이 응답을 만들므로 필요하면 `media.rs`에서 붙일 수 있다.
 - e621의 DNS HTTPS 레코드에 ECH 설정(공개 이름 `cloudflare-ech.com`)이 있다. 앱 자체에서 차단을 피하는 기술적 여지는 있지만, 이번 조사에서는 우회 접속을 시도하지 않았다.
 - 결론: **API 동작은 Pawru의 조사 자료와 픽스처를 기준으로 한다.** 실제 API 호출 검증은 사용자가 쓰는 접속 수단(VPN 등)이 켜진 상태에서 해야 한다.
 
@@ -24,7 +27,7 @@
 Pawru `docs/research.md`(2026-10-16, 실호출 확인)를 그대로 따른다. 데스크톱 앱에 중요한 부분만 요약한다.
 
 - **인증**: HTTP Basic `username:api_key`. 쿼리 방식은 쓰지 않는다. `/users/me.json`은 로그아웃 상태에서도 200이므로 `id`가 null인지로 판단한다.
-- **User-Agent 필수**: `Tailgate/0.1 (by <username> on e621)`. 브라우저 UA 흉내는 금지. 웹뷰가 API를 직접 부르면 브라우저 UA가 나가므로 **API는 반드시 Rust 쪽에서 호출한다.**
+- **User-Agent 필수**: `Tailgate/<버전> (by <username> on e621)`. 코드는 `Cargo.toml` 버전을 넣어 `Tailgate/0.1.0 (by Nyabi on e621)`을 보낸다. 브라우저 UA 흉내는 금지. 웹뷰가 API를 직접 부르면 브라우저 UA가 나가므로 **API는 반드시 Rust 쪽에서 호출한다.**
 - **Rate limit**: 초당 2회 하드 리밋(503), 권장 초당 1회. 쓰기 요청은 토큰 버킷(429). 정적 파일은 대상 아님.
 - **페이지네이션**: `page=b<id>` 커서는 깊이 제한 없음(단 `order:id_desc` 강제). `page=N`은 750까지, 넘으면 410.
 - **미디어 필드**: `preview`(256px, `width`/`height` 포함), `sample`(최대 850px), `file`(원본). WebM 게시물은 `sample.alternates`에 H.264 MP4(`variants.mp4`, `samples.720p`/`480p`)가 있다.
@@ -123,15 +126,15 @@ OS에 TUN 인터페이스를 만들면 관리자 권한(macOS 네트워크 확�
 | WireGuard | **gotatun** | 0.10.1 (2026-10-16) | Mullvad가 유지하는 boringtun 포크, 보안 감사 보고서 공개, MPL-2.0. `noise::Tunn`(지점 간 연결), `tun`/`udp` 트레이트가 공개되어 있다. 메서드 시그니처는 1단계에서 확인. |
 | (대안) | boringtun | 0.7.1 (2026-05) | BSD-3. `noise::Tunn::encapsulate/decapsulate` API가 알려져 있다. gotatun API가 맞지 않으면 대안. |
 | TCP/IP | smoltcp | 0.14.0 (2026-08) | `no_std` 지향 유저스페이스 스택. |
-| DNS 메시지 | hickory-proto | 0.26.3 | 터널 안에서 DNS 조회할 때 메시지 인코딩만 쓴다. |
-| 키 생성 | x25519-dalek | 3.0.0 | gotatun이 x25519를 재노출하므로 그것을 쓸 수도 있다. |
+| DNS 메시지 | hickory-proto | 0.26.3 | 쓰지 않았다. smoltcp DNS 소켓으로 충분했다(7절). |
+| 키 생성 | x25519-dalek | 3.0.0 | 직접 의존하지 않는다. gotatun이 재노출하는 `gotatun::x25519`를 쓴다. |
 
 ### Mullvad API (mullvadvpn-app 소스 `mullvad-api`에서 확인)
 - 서버 목록: `GET https://api.mullvad.net/app/v1/relays` — 인증 불필요. **이 네트워크에서 접속됨(200, 약 600KB).**
   - `wireguard.relays[]`: `hostname`, `location`, `active`, `ipv4_addr_in`, `ipv6_addr_in`, `public_key`, `daita` 등. 이번 조회 시 553개.
   - `wireguard.ipv4_gateway`: `10.64.0.1` (터널 안 DNS 겸 게이트웨이), `port_ranges`
   - `locations`: 도시/국가 이름
-- 토큰: `POST auth/v1/token` 본문 `{"account_number": "…"}` → `access_token`(만료 있음). 요청에 붙이는 형식(Bearer 추정)은 미확인.
+- 토큰: `POST auth/v1/token` 본문 `{"account_number": "…"}` → `access_token`(만료 있음). `Authorization: Bearer <토큰>`으로 붙인다(기기 등록이 성공해 확인).
 - 기기(키) 등록: `accounts/v1/devices`
   - 생성 `POST` `{pubkey, hijack_dns: false}` → 201, `{id, name, pubkey, ipv4_address, ipv6_address, created}` — 터널 주소를 여기서 받는다.
   - 목록 `GET`, 조회 `GET /{id}`, 삭제 `DELETE /{id}` → 204, 키 교체 `PUT /{id}/pubkey`
@@ -150,7 +153,7 @@ OS에 TUN 인터페이스를 만들면 관리자 권한(macOS 네트워크 확�
   - Mullvad 출구 확인 OK, **e621 API 200 (364ms)**
   - Cloudflare 10MB: 직접 9.4 MB/s, 앱 터널 5.2 MB/s. 직접은 국내 Cloudflare, 터널은 도쿄 경유라 같은 조건의 비교는 아니다.
   - static1 원본 파일은 직접이든 터널이든 0.2~0.4 MB/s로 느렸다. 서버 쪽 사정으로 보인다.
-- 터널 시작에서 대부분의 시간(3~4초)은 Mullvad 서버 목록(약 600KB)을 받는 데 쓴다. 터널 자체는 수 ms 만에 올라온다.
+- 터널 시작에서 대부분의 시간(3~4초)은 Mullvad 서버 목록(약 600KB)을 받는 데 쓴다. gotatun 장치를 만드는 데는 수 ms가 걸렸다. **이 수치에는 핸드셰이크가 들어 있지 않다**(8절: `build()`는 핸드셰이크를 기다리지 않는다). 핸드셰이크까지 기다리게 바꾼 뒤의 시작 시간은 status.md에 적는다.
 - `keyring-core` 1.0 + `apple-native-keyring-store`는 `keychain` 기능을 켜야 컴파일된다(`protected`는 데이터 보호 키체인이라 서명·엔타이틀먼트가 필요). `security add-generic-password`로 만든 항목을 앱이 읽으면 macOS가 접근 허용 창을 띄운다.
 - `wireguard-netstack`(GPL-3.0)은 gotatun 0.2·smoltcp 0.12에 묶여 있고 2026-02 이후 릴리스가 없어 쓰지 않았다.
 
@@ -161,4 +164,41 @@ OS에 TUN 인터페이스를 만들면 관리자 권한(macOS 네트워크 확�
 
 ### `media://`에서의 동영상
 - WKWebView는 커스텀 프로토콜의 MP4를 8~24바이트짜리 Range로 수백 번 순차적으로 읽는다(MP4 구조 파싱). 요청마다 상위로 왕복하면 각각 약 145ms(도쿄 경유)라 재생이 시작되지 않는다. 이미지(Range 없음)는 문제없다.
-- 해결 방향: 블록 단위 읽기 캐시(report.md 13절).
+- 해결 방향: 블록 단위 읽기 캐시(report.md 7.2절).
+
+## 8. 의존성 동작 확인 (2026-10-19 재검토)
+
+코드와 문서의 전제를 의존성 소스(`~/.cargo/registry`의 해당 버전)와 실측으로 대조했다. 경로는 각 크레이트의 `src/` 기준이다.
+
+### gotatun 0.10.1
+- `DeviceBuilder::build()`는 UDP 소켓을 열고 작업을 띄운 뒤 바로 돌아온다. **핸드셰이크를 기다리지 않는다**(`device/builder.rs` `build`, `device/mod.rs` `Connection::set_up`). 서버에 닿지 않아도 성공한다.
+- `Device::force_handshake(&public_key)`: 유효한 세션이 있으면 바로 돌아오고, 없으면 핸드셰이크를 시작해 끝날 때까지 기다린다. 시간 제한이 없으므로 호출하는 쪽이 건다(`device/mod.rs`).
+- `Device::wait()`: 복구할 수 없는 오류가 날 때까지 기다린다. 피어 통계 `Stats.last_handshake`는 마지막 핸드셰이크 뒤 지난 시간이다(`device/configure.rs`, `Device::read()`로 읽음). 둘 다 실행 중 끊김 감지에 쓸 수 있다.
+- 핸드셰이크 재시도 간격 `REKEY_TIMEOUT`은 5초(+지터), 시도 한도 `REKEY_ATTEMPT_TIME`은 90초(`noise/timers.rs`).
+- `IpRecv::recv`가 오류를 돌려주면 송신 루프가 "Unexpected error on tun interface"를 남기고 끝난다(`device/mod.rs` `handle_outgoing`). gotatun 자체 TUN 리더는 파싱할 수 없는 패킷을 오류로 돌려준다(`tun/tun_async_device.rs`). 그래서 우리 어댑터(`wg.rs`)는 이상한 패킷을 오류로 올리지 않고 버린다.
+- `Device`를 `stop()` 없이 버리면 Drop이 정지 작업을 띄운다.
+
+### smoltcp 0.14.0
+- `iface::Config::new`의 `random_seed` 기본값은 **0**이다(`iface/interface/mod.rs`). TCP 초기 순서 번호(`socket/tcp.rs` `connect`)와 DNS 질의 ID·출발 포트(`socket/dns.rs`)가 이 시드에서 나온다. 문서도 부팅마다 다른 값을 쓰라고 권한다.
+- TCP `timeout`의 기본값은 없음이다. keep-alive는 패킷만 보낼 뿐이고, 응답이 없을 때 연결을 끊는 것은 `set_timeout`이다(`socket/tcp.rs` `set_timeout`, `set_keep_alive` 문서). **keep-alive만 켜면 상대가 사라져도 연결이 끝나지 않는다.** timeout이 있으면 keep-alive를 켠 연결은 상대 패킷 사이 간격이 timeout을 넘을 때 끊긴다.
+- `Interface::poll()`은 들어온 패킷이 없을 때까지 처리하고, 보낼 것이 없을 때까지 내보낸다(`iface/interface/mod.rs` `poll`). 7절의 "한 번에 모두 처리"가 맞다.
+- `socket-tcp-cubic` 기능이 켜져 있으면 새 소켓의 혼잡 제어 기본값이 Cubic이다(`socket/tcp/congestion.rs` `AnyController::new`).
+- 상태가 바뀌면 읽기·쓰기 waker를 모두 깨운다(`socket/tcp.rs` `set_state`). 연결 수립을 쓰기 waker로 기다려도 된다.
+
+### reqwest 0.13.5
+- `ClientBuilder::proxy`를 부르면 시스템 프록시 자동 사용이 꺼진다(`async_impl/client.rs` `proxy`). e621 요청이 시스템 프록시로 새지 않는다. Mullvad용 클라이언트는 프록시를 지정하지 않으므로 시스템 프록시를 따른다.
+- `connect_timeout`, `read_timeout`(읽기 사이 간격), `timeout`(요청 전체)이 있다.
+- 의존성 트리에 `ring`은 없고 암호 백엔드는 aws-lc-rs 하나다(gotatun, rustls). 7절의 "하나로 통일"이 맞다.
+
+### wry 0.57.0
+- macOS 커스텀 프로토콜 응답에 본문 길이로 `Content-Length`를 직접 넣는다(`wkwebview/class/url_scheme_handler.rs`).
+
+### keyring-core 1.0.1
+- 오류의 `Display`는 비밀 값 바이트를 넣지 않는다(`error.rs`). 로그에 오류를 그대로 남겨도 된다.
+- `mock` 저장소는 같은 서비스·이름의 항목을 공유하고, `Cred::set_error`로 다음 호출 하나를 실패시킬 수 있다(`mock.rs`). 키체인 오류 경로를 테스트하는 데 쓴다.
+
+### Tailwind CSS 4.3.3
+- 테마 반경을 `--radius-s`, `--radius-l`로 지으면 `rounded-s`, `rounded-l`이 테마 값 규칙과 내장 규칙(논리적 시작 쪽, 왼쪽 두 모서리)으로 **두 번** 생성되고, 뒤에 오는 내장 규칙이 일부 모서리를 0.25rem으로 덮는다. WKWebView에서 계산값을 재 보니 `rounded-l` 패널은 왼쪽 위·오른쪽 위·왼쪽 아래·오른쪽 아래가 4/14/4/14px, `rounded-s`는 4/6/4/6px이었다. `--radius-m`은 겹치는 내장 이름이 없어 9px로 맞았다.
+
+### WKWebView (macOS 27.0.1)
+- `navigator.language`는 앱 번들의 지역화 선언과 관계없이 시스템 언어를 돌려준다. 시스템 언어가 `ko-KR`일 때 번들 없는 실행 파일, Tauri식 번들(`CFBundleDevelopmentRegion`만 있음), `CFBundleLocalizations`에 ko를 넣은 번들 셋 다 `ko-KR`이었다. `Bundle.main.preferredLocalizations`는 앞의 둘에서 `en`이었으므로 웹뷰 언어와는 별개다.
