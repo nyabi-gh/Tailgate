@@ -54,8 +54,9 @@ impl IpRecv for FromStack {
                 io::Error::new(io::ErrorKind::UnexpectedEof, "network stack stopped")
             })?;
         let rest = iter::from_fn(|| self.queue.try_recv().ok()).take(MAX_BATCH - 1);
-        // smoltcp only emits well-formed IPv4 packets, so a parse failure cannot happen in practice;
-        // gotatun's own TUN reader drops unparsable packets the same way.
+        // smoltcp only emits well-formed IPv4 packets, so a parse failure should not happen. If one
+        // does, dropping the packet is deliberate: gotatun ends its send loop on any error from
+        // `recv`, which would silently stop the tunnel.
         Ok(iter::once(first)
             .chain(rest)
             .filter_map(|bytes| Packet::from_bytes(bytes).try_into_ip().ok()))

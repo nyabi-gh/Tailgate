@@ -1,5 +1,5 @@
-//! A loopback SOCKS5 server (RFC 1928, CONNECT only, no auth). Both the Rust HTTP client and the
-//! webview use it, so switching between direct and tunnelled connections never needs a restart.
+//! A loopback SOCKS5 server (RFC 1928, CONNECT only, no auth) for the app's Rust HTTP clients.
+//! The route is chosen per connection, so it can change while the app runs.
 
 use std::{
     io,
@@ -47,6 +47,8 @@ impl SocksServer {
         self.address
     }
 
+    /// Applies to connections accepted from now on; relayed connections keep the route they
+    /// started with (docs/report.md §6.3).
     pub fn set_route(&self, route: Route) {
         *self.route.write().expect("route lock poisoned") = route;
     }
