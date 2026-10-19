@@ -77,7 +77,9 @@ tailgate/
       lib.rs             Tauri 빌더, 창 생성(플랫폼별 옵션), 상태 조립, 이벤트 연결
       commands.rs        프런트엔드에 노출하는 명령 (얇게: 검증 → 호출 → 반환)
       network.rs         SOCKS 프록시와 터널 소유, 연결 상태(watch)와 실패 코드, e621용 HTTP 클라이언트
-      media.rs           media:// 프로토콜: static1 data/ 경로만, 앱 연결로 받아 응답, 동영상 블록 캐시
+      media/
+        mod.rs           media:// 프로토콜: static1 data/ 경로만, 앱 연결로 받아 응답, Range 처리
+        blocks.rs        동영상 블록 캐시 (1MB 블록, LRU)
       secrets.rs         OS 키체인 (keyring-core + 플랫폼 저장소)
       tunnel/
         mod.rs           Tunnel::start(핸드셰이크까지)/stop. 밖에서는 이것만 쓴다
