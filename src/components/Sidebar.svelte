@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { BookOpen, CircleUserRound, Flame, Heart, Layers, Search, Settings } from "@lucide/svelte";
+  import { BookOpen, CircleAlert, CircleUserRound, Flame, Heart, Layers, Search, Settings } from "@lucide/svelte";
+  import { connection } from "../lib/connection.svelte";
   import { m } from "../lib/i18n/index.svelte";
   import { browseViews, type BrowseView, type View } from "../lib/views";
 
@@ -11,6 +12,8 @@
   >;
 
   const item = "flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-left transition-colors hover:bg-hover";
+
+  const status = $derived(connection());
 </script>
 
 <nav class="flex w-sidebar shrink-0 flex-col px-2.5 pb-2.5">
@@ -33,9 +36,34 @@
   </ul>
 
   <div class="mt-auto flex flex-col gap-px">
-    <button class={[item, "text-dim"]} onclick={() => onselect("settings")}>
-      <span class="mx-[5px] size-1.5 rounded-full bg-faint"></span>
-      {m().connection.direct}
+    <button
+      class={[item, status.state === "failed" ? "text-ink" : "text-dim"]}
+      title={status.state === "failed" ? m().connection.failure[status.code] : undefined}
+      onclick={() => onselect("settings")}
+    >
+      {#if status.state === "failed"}
+        <CircleAlert size={16} strokeWidth={1.75} class="shrink-0" />
+      {:else}
+        <span
+          class={[
+            "mx-[5px] size-1.5 shrink-0 rounded-full",
+            status.state === "connecting" && "border border-faint",
+            status.state === "direct" && "bg-faint",
+            status.state === "tunnel" && "bg-focus",
+          ]}
+        ></span>
+      {/if}
+      <span class="truncate">
+        {#if status.state === "direct"}
+          {m().connection.direct}
+        {:else if status.state === "connecting"}
+          {m().connection.connecting}
+        {:else if status.state === "tunnel"}
+          {m().connection.tunnel(status.relay)}
+        {:else}
+          {m().connection.failed}
+        {/if}
+      </span>
     </button>
 
     <div class="flex items-center gap-1">

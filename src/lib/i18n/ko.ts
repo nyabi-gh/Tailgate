@@ -11,6 +11,17 @@ const ko: Messages = {
   },
   connection: {
     direct: "직접 연결",
+    connecting: "연결 중…",
+    tunnel: (relay) => `VPN · ${relay}`,
+    failed: "VPN 연결 안 됨",
+    failure: {
+      credentialStore: "저장된 VPN 설정을 읽지 못했습니다.",
+      savedDevice: "저장된 VPN 설정이 손상되었습니다.",
+      relayList: "Mullvad 서버 목록을 받지 못했습니다.",
+      noRelay: "고른 위치에 쓸 수 있는 Mullvad 서버가 없습니다.",
+      tunnel: "VPN을 시작하지 못했습니다.",
+      handshake: "VPN 서버가 응답하지 않습니다.",
+    },
   },
   account: {
     signIn: "로그인",

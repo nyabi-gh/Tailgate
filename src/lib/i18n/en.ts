@@ -9,6 +9,17 @@ const en = {
   },
   connection: {
     direct: "Direct connection",
+    connecting: "Connecting…",
+    tunnel: (relay: string) => `VPN · ${relay}`,
+    failed: "VPN not connected",
+    failure: {
+      credentialStore: "Could not read the saved VPN settings.",
+      savedDevice: "The saved VPN settings are damaged.",
+      relayList: "Could not get the Mullvad server list.",
+      noRelay: "No Mullvad server is available at the chosen location.",
+      tunnel: "Could not start the VPN.",
+      handshake: "The VPN server did not answer.",
+    },
   },
   account: {
     signIn: "Sign in",
