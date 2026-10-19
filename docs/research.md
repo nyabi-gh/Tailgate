@@ -181,6 +181,8 @@ OS에 TUN 인터페이스를 만들면 관리자 권한(macOS 네트워크 확�
 ### smoltcp 0.14.0
 - `iface::Config::new`의 `random_seed` 기본값은 **0**이다(`iface/interface/mod.rs`). TCP 초기 순서 번호(`socket/tcp.rs` `connect`)와 DNS 질의 ID·출발 포트(`socket/dns.rs`)가 이 시드에서 나온다. 문서도 부팅마다 다른 값을 쓰라고 권한다.
 - TCP `timeout`의 기본값은 없음이다. keep-alive는 패킷만 보낼 뿐이고, 응답이 없을 때 연결을 끊는 것은 `set_timeout`이다(`socket/tcp.rs` `set_timeout`, `set_keep_alive` 문서). **keep-alive만 켜면 상대가 사라져도 연결이 끝나지 않는다.** timeout이 있으면 keep-alive를 켠 연결은 상대 패킷 사이 간격이 timeout을 넘을 때 끊긴다.
+- 실측: 우리 `NetStack`에 smoltcp 상대 스택을 붙여 연결한 뒤 상대를 끊었다. keep-alive만 있을 때는 읽기가 75초 넘게 끝나지 않았고, keep-alive 15초 + timeout 45초로 바꾸자 45.0초에 끝났다. 끝날 때 오류가 아니라 EOF(`Ok(0)`)로 보인다.
+- 실측: 시드 0이면 새로 만든 두 스택의 첫 SYN 순서 번호가 같았다(`netstack.rs` 테스트).
 - `Interface::poll()`은 들어온 패킷이 없을 때까지 처리하고, 보낼 것이 없을 때까지 내보낸다(`iface/interface/mod.rs` `poll`). 7절의 "한 번에 모두 처리"가 맞다.
 - `socket-tcp-cubic` 기능이 켜져 있으면 새 소켓의 혼잡 제어 기본값이 Cubic이다(`socket/tcp/congestion.rs` `AnyController::new`).
 - 상태가 바뀌면 읽기·쓰기 waker를 모두 깨운다(`socket/tcp.rs` `set_state`). 연결 수립을 쓰기 waker로 기다려도 된다.
