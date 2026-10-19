@@ -51,12 +51,16 @@
 | 10-19 | `media://` 동영상 | 실제 앱, 디버그 로그 | 재생 안 됨. 작은 Range 수백 번(research.md 7절) |
 | 10-19 | 코드·문서 재검토 | 의존성 소스 대조, WKWebView 계산값·언어 실측 | 위 표. 확인한 동작은 research.md 8절 |
 | 10-19 | 재검토 수정 후 | `cargo test`(14), `cargo clippy --all-targets`, `cargo fmt --check`, `npm run check`, `npm run build`, 실제 앱 실행·캡처 | 모두 통과, 경고 0. 앱은 한국어로 뜨고 터널 연결 후 사이드바에 서버 표시 |
+| 10-19 | 핸드셰이크 포함 터널 시작 | `tunnel_probe` 37회(릴리스 34, 디버그 3) | 31~38ms가 35회, 99ms 1회, 5.3초 1회(원인 미확인). research.md 7절 |
+| 10-19 | static1 처리량, 720p 샘플 | 같은 파일을 직접·터널로 번갈아, Range 크기별 | 직접 0.9~1.75, 터널 0.63~1.08 MB/s. 720p 비트레이트 0.11~0.14 MB/s. 블록 1MB로 결정(report.md 7.2절) |
+| 10-19 | 터널 직후 첫 요청 | 위 37회 | 2회 SOCKS `TtlExpired`(DNS 또는 연결 시간 초과). 원인 미확인 |
 
 ## 남은 일
 
-- **동영상 블록 캐시**(report.md 7.2절). 먼저 720p 샘플 처리량을 잰다.
+- **동영상 블록 캐시**(report.md 7.2절). 블록은 1MB.
 - 동영상 재생·탐색 반응성 확인. 확인용 임시 패널은 커밋하지 않는다. `canLoadRemote()`가 참일 때만 `mediaUrl(...)`로 `<img>`/`<video>`를 띄우면 된다(예: 게시물 6791442의 720p, 6791519의 원본 PNG).
-- 핸드셰이크까지 포함한 터널 시작 시간을 `tunnel_probe`로 다시 잰다(research.md 7절의 "수 ms"는 핸드셰이크 전 수치).
+- **터널 직후 첫 요청이 가끔 `TtlExpired`로 실패**(37회 중 2회, research.md 7절). 재현될 때 DNS 질의·응답이 오갔는지 보려면 smoltcp `log` 기능이나 netstack 임시 로그가 필요하다(다시 빌드하면 키체인 허용 창이 뜬다). 앱에서 생기면 첫 화면 요청이 10~15초 뒤 실패하므로 1단계 9번 전에 다룬다.
+- 터널 시작이 5.3초 걸린 1회(첫 핸드셰이크 재전송으로 보임)가 다시 나오는지 지켜본다.
 - 터널 안 연결이 리셋되거나 timeout으로 끊기면 읽기가 오류가 아니라 EOF로 끝난다. 지금은 모든 요청이 TLS라 잘림이 오류로 드러나지만, 평문 요청을 쓰게 되면 `netstack.rs`에서 구분해야 한다.
 - 1단계 9번: 실행 중 끊김 감지·재연결, 라우트 전환 시 연결 끊기(report.md 6.3절 4·5), 서버 목록 디스크 캐시(터널 시작 3~4초의 대부분), 키체인 실패 후 다시 시도.
 - Windows 실측 전부: 터널, aws-lc-rs 빌드, WebView2의 `media://` Range, Mica, Ctrl K. Windows 기기나 VM이 필요하다.
@@ -66,14 +70,13 @@
 
 ## 다음 할 일
 
-1. 핸드셰이크 포함 터널 시작 시간을 `tunnel_probe`로 잰다.
-2. 720p 샘플 처리량을 재고 블록 크기를 정한다.
-3. 동영상 블록 캐시, 재생·탐색 확인.
-4. 1단계 3번 API 계층.
+1. 동영상 블록 캐시(1MB), 재생·탐색 확인.
+2. 1단계 3번 API 계층.
+3. 터널 직후 첫 요청 실패의 원인 추적(위 "남은 일").
 
 ## 개발 메모
 
-- 터널 수동 점검: `cd src-tauri && cargo run --example tunnel_probe` (`--forget`은 Mullvad 기기 등록 해제, `PROBE_DOWNLOAD=<url>`은 속도 측정). 출력의 "tunnel up in"은 이제 핸드셰이크까지 포함한다.
+- 터널 수동 점검: `cd src-tauri && cargo run --example tunnel_probe` (`--forget`은 Mullvad 기기 등록 해제, `PROBE_DOWNLOAD=<url>`은 속도 측정, `--serve`는 SOCKS5를 열어 두어 `curl -x socks5h://<주소>`로 터널을 쓸 수 있다). 출력의 "tunnel up in"은 이제 핸드셰이크까지 포함한다. 디버그·릴리스 실행 파일은 각각 처음 키체인을 읽을 때 허용 창이 뜬다.
 - Mullvad 계정 번호는 사용자가 직접 넣는다: `security add-generic-password -s pro.tb.nyabi.Tailgate -a mullvad-account -w`. 이 계정에는 지금 `divine condor` 기기가 등록되어 있다.
 - 키체인 항목을 다른 실행 파일이 만들었거나 다시 빌드한 디버그 실행 파일이 읽으면 macOS가 접근 허용 창을 띄운다. 창이 떠 있는 동안 앱은 `connecting`으로 기다리고, 거부하면 `failed`(`credentialStore`)로 막힌 채 남는다.
 - 디버그 로그: `RUST_LOG=info,tailgate_lib=debug npm run tauri dev`. 웹 인스펙터는 `TAILGATE_DEVTOOLS=1`(디버그 빌드에서만).
