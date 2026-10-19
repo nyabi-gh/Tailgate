@@ -23,8 +23,9 @@ pub fn run() {
         .setup(|app| {
             secrets::init()?;
             let network = Arc::new(tauri::async_runtime::block_on(Network::start())?);
-            build_main_window(app)?;
             app.manage(Arc::clone(&network));
+            app.manage(Arc::new(media::Media::new(network.http().clone())));
+            build_main_window(app)?;
 
             let handle = app.handle().clone();
             let mut changes = network.watch_connection();
