@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Wanted Sans Variable";
+  src: url("../assets/fonts/WantedSansVariable.woff2") format("woff2-variations");
+  font-weight: 400 1000;
+  font-display: block;
+}
+
+:root {
+  color-scheme: dark;
+
+  --window: #17191c;
+  --panel: #1e2024;
+  --raised: #272a2f;
+  --hover: rgb(255 255 255 / 0.06);
+  --selected: rgb(255 255 255 / 0.1);
+  --seam: rgb(255 255 255 / 0.07);
+  --ink: #eceef1;
+  --dim: #8d929b;
+  --faint: #5d626b;
+  --focus: #7aa2e8;
+  --panel-shadow: 0 0 0 1px rgb(255 255 255 / 0.06), 0 8px 24px rgb(0 0 0 / 0.25);
+
+  --tag-artist: #e5a43f;
+  --tag-copyright: #c084d8;
+  --tag-character: #6dc28e;
+  --tag-species: #e8826e;
+  --tag-general: #9db4cf;
+  --tag-meta: #b4b8bd;
+  --tag-lore: #7dbdb4;
+  --tag-invalid: #e27878;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+
+    --window: #e9ebee;
+    --panel: #ffffff;
+    --raised: #f0f1f3;
+    --hover: rgb(0 0 0 / 0.045);
+    --selected: rgb(0 0 0 / 0.075);
+    --seam: rgb(0 0 0 / 0.08);
+    --ink: #1a1c20;
+    --dim: #696e77;
+    --faint: #a0a4ab;
+    --focus: #2f5fb8;
+    --panel-shadow: 0 0 0 1px rgb(0 0 0 / 0.07), 0 8px 24px rgb(0 0 0 / 0.06);
+
+    /* Same hues, darker, so every tag color keeps 4.5:1 contrast on light surfaces. */
+    --tag-artist: #8a5806;
+    --tag-copyright: #8a3fa6;
+    --tag-character: #246f44;
+    --tag-species: #a6432f;
+    --tag-general: #3c5f86;
+    --tag-meta: #5c6166;
+    --tag-lore: #2c6a62;
+    --tag-invalid: #b33a3a;
+  }
+}
+
+/* `inline` makes utilities read the variables above at runtime, so light/dark switches without rebuilding. */
+@theme inline {
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-window: var(--window);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-hover: var(--hover);
+  --color-selected: var(--selected);
+  --color-seam: var(--seam);
+  --color-ink: var(--ink);
+  --color-dim: var(--dim);
+  --color-faint: var(--faint);
+  --color-focus: var(--focus);
+  --color-tag-artist: var(--tag-artist);
+  --color-tag-copyright: var(--tag-copyright);
+  --color-tag-character: var(--tag-character);
+  --color-tag-species: var(--tag-species);
+  --color-tag-general: var(--tag-general);
+  --color-tag-meta: var(--tag-meta);
+  --color-tag-lore: var(--tag-lore);
+  --color-tag-invalid: var(--tag-invalid);
+
+  --shadow-panel: var(--panel-shadow);
+}
+
+@theme {
+  --font-sans: "Wanted Sans Variable", system-ui, sans-serif;
+
+  --text-*: initial;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 19px;
+  --text-xl: 26px;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 520;
+  --font-weight-strong: 650;
+
+  --radius-s: 6px;
+  --radius-m: 9px;
+  --radius-l: 14px;
+
+  --spacing-sidebar: 220px;
+  --spacing-titlebar: 52px;
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    @apply bg-window font-sans text-sm text-ink antialiased select-none;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.45;
+    cursor: default;
+  }
+
+  /* The native sidebar material shows through wherever the page leaves the window uncovered. */
+  :root[data-material="vibrant"] body {
+    background: transparent;
+  }
+
+  #app {
+    height: 100%;
+  }
+
+  button {
+    cursor: default;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0s !important;
+      transition-duration: 0s !important;
+    }
+  }
+}
