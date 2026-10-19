@@ -30,6 +30,11 @@ const TCP_BUFFER_SIZE: usize = 512 * 1024;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const DNS_TIMEOUT: Duration = Duration::from_secs(10);
 const IDLE_POLL: Duration = Duration::from_secs(1);
+/// The peer answers every keep-alive, so going this long without any packet from it means the
+/// path is gone (the tunnel died, say). smoltcp only ends a connection on the timeout; keep-alives
+/// alone would wait forever.
+const KEEP_ALIVE: smoltcp::time::Duration = smoltcp::time::Duration::from_secs(15);
+const SILENCE_TIMEOUT: smoltcp::time::Duration = smoltcp::time::Duration::from_secs(45);
 
 pub struct NetStack {
     state: Mutex<State>,
@@ -201,7 +206,8 @@ impl NetStack {
                 tcp::SocketBuffer::new(vec![0; TCP_BUFFER_SIZE]),
             );
             socket.set_nagle_enabled(false);
-            socket.set_keep_alive(Some(smoltcp::time::Duration::from_secs(30)));
+            socket.set_keep_alive(Some(KEEP_ALIVE));
+            socket.set_timeout(Some(SILENCE_TIMEOUT));
             let local_port = state.take_port();
             let State { iface, .. } = &mut *state;
             socket

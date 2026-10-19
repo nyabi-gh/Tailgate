@@ -1,6 +1,8 @@
 //! Owns the loopback SOCKS proxy that every e621 request of the app goes through, and the in-app
 //! tunnel behind it when one is configured.
 
+use std::time::Duration;
+
 use serde::Serialize;
 use tokio::sync::{Mutex, watch};
 
@@ -21,6 +23,12 @@ pub const USER_AGENT: &str = concat!(
 
 /// Until the connection settings screen exists (report §12, step 9), the relay is fixed.
 const DEFAULT_RELAY_LOCATION: &str = "jp-tyo";
+/// Longer than the tunnel's own DNS and connect limits together (25 s), so those report first.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Between two reads, not for the whole response: a large original may take minutes.
+const READ_TIMEOUT: Duration = Duration::from_secs(30);
+/// Whole requests, the relay list (about 600 KB) included.
+const MULLVAD_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// What the UI needs to know before it may load anything remote.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -94,11 +102,14 @@ impl Network {
                 reqwest::Proxy::all(format!("socks5h://{}", socks.address()))
                     .map_err(std::io::Error::other)?,
             )
+            .connect_timeout(CONNECT_TIMEOUT)
+            .read_timeout(READ_TIMEOUT)
             .build()
             .map_err(std::io::Error::other)?;
         let mullvad = Mullvad::new(
             reqwest::Client::builder()
                 .user_agent(USER_AGENT)
+                .timeout(MULLVAD_TIMEOUT)
                 .build()
                 .map_err(std::io::Error::other)?,
         );
