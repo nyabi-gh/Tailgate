@@ -1,14 +1,24 @@
 <script lang="ts">
+  import { ZoomIn } from "@lucide/svelte";
+  import { untrack } from "svelte";
   import EmptySearch from "./components/EmptySearch.svelte";
-  import SearchField from "./components/SearchField.svelte";
+  import Grid from "./components/Grid.svelte";
   import SignInSheet from "./components/SignInSheet.svelte";
   import Sidebar from "./components/Sidebar.svelte";
+  import SortMenu from "./components/SortMenu.svelte";
+  import TagInput from "./components/TagInput.svelte";
+  import { account } from "./lib/account.svelte";
+  import { m } from "./lib/i18n/index.svelte";
+  import { ROW_HEIGHT } from "./lib/layout";
   import { isMac } from "./lib/platform";
+  import { search, startSearch } from "./lib/search.svelte";
   import type { View } from "./lib/views";
 
   let view = $state<View>("search");
-  let query = $state("");
-  let searchField: SearchField;
+  let tags = $state<string[]>([]);
+  let rowHeight = $state(ROW_HEIGHT.initial);
+  let tagInput: TagInput;
+  let grid: Grid | undefined = $state();
   let signInSheet: SignInSheet;
 
   function isTyping(target: EventTarget | null) {
@@ -23,15 +33,36 @@
     if (commandK || slash) {
       event.preventDefault();
       view = "search";
-      searchField.focus();
+      tagInput.focus();
     }
   }
 
   function addTag(tag: string) {
-    const tags = query.split(/\s+/).filter(Boolean);
-    if (!tags.includes(tag)) query = [...tags, tag].join(" ");
-    searchField.focus();
+    if (!tags.includes(tag)) tags = [...tags, tag];
+    tagInput.focus();
   }
+
+  function run(next: string[]) {
+    tags = next;
+    startSearch(next.join(" "));
+  }
+
+  // Favorites and votes in the results belong to whoever is signed in, so a change of account
+  // reloads the search.
+  const signedInAs = $derived.by(() => {
+    const current = account();
+    return current.state === "signedIn" ? current.name : null;
+  });
+  let previousAccount: string | null | undefined;
+  $effect(() => {
+    const now = signedInAs;
+    untrack(() => {
+      if (previousAccount !== undefined && previousAccount !== now && search.query !== null) {
+        startSearch(search.query);
+      }
+      previousAccount = now;
+    });
+  });
 </script>
 
 <svelte:window {onkeydown} />
@@ -40,13 +71,33 @@
   <Sidebar current={view} onselect={(next) => (view = next)} onaccount={() => signInSheet.open()} />
 
   <main class="my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg bg-panel shadow-panel">
-    <header class="flex h-11 shrink-0 items-center px-3" data-tauri-drag-region>
-      <SearchField bind:this={searchField} bind:value={query} />
+    <header class="flex min-h-11 shrink-0 items-center gap-2 px-3 py-1" data-tauri-drag-region>
+      <TagInput bind:this={tagInput} bind:tags onsubmit={run} />
+      <SortMenu {tags} onchange={run} />
+      {#if search.query !== null}
+        <label class="ml-auto flex shrink-0 items-center gap-2 text-dim" title={m().search.size}>
+          <ZoomIn size={15} strokeWidth={1.75} />
+          <span class="sr-only">{m().search.size}</span>
+          <input
+            type="range"
+            class="w-24 accent-focus"
+            min={ROW_HEIGHT.min}
+            max={ROW_HEIGHT.max}
+            step="10"
+            value={rowHeight}
+            oninput={(event) => grid?.resize(Number(event.currentTarget.value))}
+          />
+        </label>
+      {/if}
     </header>
 
-    <section class="min-h-0 flex-1 overflow-auto">
+    <section class="min-h-0 flex-1">
       {#if view === "search"}
-        <EmptySearch onpick={addTag} />
+        {#if search.query === null}
+          <div class="h-full overflow-auto"><EmptySearch onpick={addTag} /></div>
+        {:else}
+          <Grid bind:this={grid} bind:rowHeight />
+        {/if}
       {/if}
     </section>
   </main>
