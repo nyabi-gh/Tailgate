@@ -2,6 +2,7 @@
 //! (docs/research.md). A saved copy is used at once and refreshed after the tunnel is up.
 
 use std::{
+    collections::HashSet,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -124,30 +125,44 @@ impl Relays {
     }
 }
 
-/// Picks one of the location's active relays at random, as Mullvad's own app does, so users of
-/// a city spread over its servers.
-pub fn pick<'a>(list: &'a RelayList, location: &str) -> Option<&'a Relay> {
-    let candidates: Vec<&Relay> = list
-        .relays
+pub fn active_at<'a>(list: &'a RelayList, location: &str) -> impl Iterator<Item = &'a Relay> {
+    list.relays
         .iter()
-        .filter(|relay| relay.active && relay.location == location)
+        .filter(move |relay| relay.active && relay.location == location)
+}
+
+/// Picks one of the location's active relays at random, as Mullvad's own app does, so users of
+/// a city spread over its servers. Relays in `unanswered` are left out while the location has
+/// others: Mullvad can list a relay as active that never answers a handshake (docs/research.md
+/// §7), and picking it again would cost the user another 10 s each time.
+pub fn pick<'a>(
+    list: &'a RelayList,
+    location: &str,
+    unanswered: &HashSet<String>,
+) -> Option<&'a Relay> {
+    let candidates: Vec<&Relay> = active_at(list, location).collect();
+    let answering: Vec<&Relay> = candidates
+        .iter()
+        .copied()
+        .filter(|relay| !unanswered.contains(&relay.hostname))
         .collect();
-    if candidates.is_empty() {
+    let pool = if answering.is_empty() {
+        candidates
+    } else {
+        answering
+    };
+    if pool.is_empty() {
         return None;
     }
     let index = getrandom::u32().expect("the OS random source is unavailable") as usize;
-    Some(candidates[index % candidates.len()])
+    Some(pool[index % pool.len()])
 }
 
 pub fn choices(list: &RelayList) -> Vec<LocationChoice> {
     let mut choices: Vec<LocationChoice> = list
         .locations
         .iter()
-        .filter(|(code, _)| {
-            list.relays
-                .iter()
-                .any(|relay| relay.active && &relay.location == *code)
-        })
+        .filter(|(code, _)| active_at(list, code).next().is_some())
         .map(|(code, location)| LocationChoice {
             code: code.clone(),
             country: location.country.clone(),
@@ -210,12 +225,30 @@ mod tests {
     #[test]
     fn picks_an_active_relay_of_the_location() {
         let list = fixture();
+        let none = HashSet::new();
         for _ in 0..20 {
-            let relay = pick(&list, "jp-tyo").unwrap();
+            let relay = pick(&list, "jp-tyo", &none).unwrap();
             assert!(relay.active && relay.location == "jp-tyo");
         }
-        assert!(pick(&list, "br-sao").is_none());
-        assert!(pick(&list, "jp").is_none());
+        assert!(pick(&list, "br-sao", &none).is_none());
+        assert!(pick(&list, "jp", &none).is_none());
+    }
+
+    #[test]
+    fn leaves_out_relays_that_did_not_answer_while_others_remain() {
+        let list = fixture();
+        let one = HashSet::from(["jp-tyo-wg-002".to_owned()]);
+        for _ in 0..20 {
+            assert_eq!(
+                pick(&list, "jp-tyo", &one).unwrap().hostname,
+                "jp-tyo-wg-001"
+            );
+        }
+        let both = HashSet::from(["jp-tyo-wg-001".to_owned(), "jp-tyo-wg-002".to_owned()]);
+        let picked: HashSet<&str> = (0..40)
+            .map(|_| pick(&list, "jp-tyo", &both).unwrap().hostname.as_str())
+            .collect();
+        assert_eq!(picked, HashSet::from(["jp-tyo-wg-001", "jp-tyo-wg-002"]));
     }
 
     #[tokio::test]

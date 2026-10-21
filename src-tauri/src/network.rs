@@ -2,6 +2,7 @@
 //! tunnel behind it, and the connection settings that choose between them.
 
 use std::{
+    collections::HashSet,
     io,
     path::{Path, PathBuf},
     sync::{Arc, RwLock},
@@ -240,6 +241,8 @@ pub struct Network {
     /// Talks to Mullvad directly: these calls are what sets up the route the proxy would need.
     mullvad: Mullvad,
     relays: Relays,
+    /// Relays whose last handshake went unanswered in this run; see [`relays::pick`].
+    unanswered: std::sync::Mutex<HashSet<String>>,
     settings: Arc<Settings>,
     /// The settings the last connection attempt went by, the first-run default included.
     effective: std::sync::Mutex<Option<ConnectionSettings>>,
@@ -288,6 +291,7 @@ impl Network {
             http,
             mullvad,
             relays: Relays::new(relay_cache),
+            unanswered: std::sync::Mutex::new(HashSet::new()),
             settings,
             effective: std::sync::Mutex::new(None),
             mullvad_device: std::sync::Mutex::new(None),
@@ -439,7 +443,7 @@ impl Network {
             .get(&self.mullvad)
             .await
             .map_err(ConnectError::RelayList)?;
-        match start_relay(&device, &list, location).await {
+        match self.start_relay(&device, &list, location).await {
             Ok(opened) => {
                 if origin == Origin::Saved {
                     let network = Arc::clone(self);
@@ -458,10 +462,55 @@ impl Network {
                     .refresh(&self.mullvad)
                     .await
                     .map_err(ConnectError::RelayList)?;
-                start_relay(&device, &list, location).await
+                self.start_relay(&device, &list, location).await
+            }
+            // The relay that did not answer is now left out, so another one can be tried before
+            // the user sees a failure.
+            Err(error @ ConnectError::Tunnel(TunnelError::Handshake))
+                if self.has_answering_relay(&list, location) =>
+            {
+                tracing::warn!("{error}; trying another relay");
+                self.start_relay(&device, &list, location).await
             }
             Err(error) => Err(error),
         }
+    }
+
+    async fn start_relay(
+        &self,
+        device: &RegisteredDevice,
+        list: &RelayList,
+        location: &str,
+    ) -> Result<Opened, ConnectError> {
+        let relay = relays::pick(list, location, &self.lock_unanswered())
+            .ok_or_else(|| ConnectError::NoRelay(location.to_owned()))?;
+        let config = device
+            .tunnel_config(relay)
+            .map_err(ConnectError::TunnelConfig)?;
+        match Tunnel::start(&config).await {
+            Ok(tunnel) => {
+                self.lock_unanswered().remove(&relay.hostname);
+                Ok(Opened::Tunnel {
+                    tunnel,
+                    relay: relay.hostname.clone(),
+                })
+            }
+            Err(TunnelError::Handshake) => {
+                tracing::warn!("{} did not answer the handshake", relay.hostname);
+                self.lock_unanswered().insert(relay.hostname.clone());
+                Err(TunnelError::Handshake.into())
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    fn has_answering_relay(&self, list: &RelayList, location: &str) -> bool {
+        let unanswered = self.lock_unanswered();
+        relays::active_at(list, location).any(|relay| !unanswered.contains(&relay.hostname))
+    }
+
+    fn lock_unanswered(&self) -> std::sync::MutexGuard<'_, HashSet<String>> {
+        self.unanswered.lock().expect("relay lock poisoned")
     }
 
     pub fn details(&self) -> ConnectionDetails {
@@ -493,7 +542,7 @@ impl Network {
 
     pub async fn set_location(&self, code: &str) -> Result<(), SettingsChangeError> {
         let (list, _) = self.relays.get(&self.mullvad).await?;
-        if relays::pick(&list, code).is_none() {
+        if relays::active_at(&list, code).next().is_none() {
             return Err(SettingsChangeError::UnknownLocation);
         }
         let saved = self.change_settings(|settings| settings.location = code.to_owned())?;
@@ -674,23 +723,6 @@ impl Network {
         *effective = Some(next.clone());
         Ok(next)
     }
-}
-
-async fn start_relay(
-    device: &RegisteredDevice,
-    list: &RelayList,
-    location: &str,
-) -> Result<Opened, ConnectError> {
-    let relay =
-        relays::pick(list, location).ok_or_else(|| ConnectError::NoRelay(location.to_owned()))?;
-    let config = device
-        .tunnel_config(relay)
-        .map_err(ConnectError::TunnelConfig)?;
-    let tunnel = Tunnel::start(&config).await?;
-    Ok(Opened::Tunnel {
-        tunnel,
-        relay: relay.hostname.clone(),
-    })
 }
 
 fn retry_delay(failures: u32) -> Duration {
