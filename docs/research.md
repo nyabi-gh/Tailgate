@@ -32,7 +32,14 @@ Pawru `docs/research.md`(2026-10-16, 실호출 확인)를 그대로 따른다. �
 - **페이지네이션**: `page=b<id>` 커서는 깊이 제한 없음(단 `order:id_desc` 강제). `page=N`은 750까지, 넘으면 410.
 - **미디어 필드**: `preview`(256px, `width`/`height` 포함), `sample`(최대 850px), `file`(원본). WebM 게시물은 `sample.alternates`에 H.264 MP4(`variants.mp4`, `samples.720p`/`480p`)가 있다.
 - **숨김/삭제 게시물**: URL 필드가 null로 온다.
-- **블랙리스트**: 사이트도 클라이언트에서 거른다. 앱이 직접 구현해야 한다(문법은 Pawru 조사 참고).
+- **블랙리스트**: 사이트도 클라이언트(브라우저)에서 거른다. 앱이 직접 구현해야 한다. 아래는 2026-10-21 e621ng master의 `app/javascript/src/js/core/blacklist/`(`Filter.ts`, `FilterToken.ts`, `FilterUtilities.ts`)와 `models/PostCache.ts`를 읽고 확인한 동작이다. `blacklist.rs`가 그대로 옮겼다.
+  - 한 줄이 필터 하나. 앞뒤 공백을 지우고 빈 줄과 `#`로 시작하는 줄은 버린다. 소문자로 바꾸고 ` #` 뒤를 잘라 낸다. 공백으로 나눈 토큰은 중복을 없앤다.
+  - 보통 토큰은 모두 맞아야 하고(AND), `~` 토큰이 있으면 그중 하나가 맞아야 한다. `-`는 토큰 결과를 뒤집는다. 필터 중 하나라도 맞으면 숨긴다.
+  - 메타태그: `tagcount`, `id`, `status`, `rating`, `type`, `width`, `height`, `filesize`, `score`, `favcount`, `fav`, `uploader`/`user`, `userid`, `username`, `pool`. 목록에 없는 `이름:값`은 그 문자열 그대로 태그다. `*`가 있는 태그는 와일드카드(`*`만 특수 문자).
+  - 비교는 `<`, `<=`, `>`, `>=`(`=<`, `=>`도 받음)와 범위 `a..b`, `..b`, `a..`. 앞에 붙은 `=`는 값에 남아 숫자가 안 되므로 그 토큰은 늘 거짓이다. 숫자는 JavaScript `parseInt`처럼 앞쪽 숫자만 읽는다(`2abc`는 2).
+  - `filesize`는 `5mb`, `300kb`, `1024b`를 받고, `=`는 ±5% 범위다. `rating`은 `safe`/`s` 등 긴 이름도 받는다. `fav:`는 값과 관계없이 "내 즐겨찾기". `user:!123`은 업로더 id. 업로더 이름은 소문자로 비교한다.
+  - 게시물 쪽 값: 태그는 모든 카테고리를 합친 목록, 점수는 `score.total`, 크기는 원본 파일. `status`는 `pending`/`flagged`/`deleted` 깃발(사이트 템플릿이 주는 문자열은 확인하지 않고 이 셋으로 보았다).
+  - 로그아웃 상태의 `/users/me`에도 사이트 기본 블랙리스트가 들어 있다(픽스처: gore, `young -rating:s` 등). 사이트는 익명 사용자에게 이것을 적용한다.
 - **약관**: 개인적·비상업적 용도, 18세 이상. 대량 수집은 `db_export`를 쓰라고 안내한다. 일괄 다운로드 기능을 넣는다면 API 스로틀을 그대로 거쳐야 한다.
 
 Pawru의 테스트 픽스처(`PawruTests/Fixtures/*.json`, 실제 응답)를 재사용할 수 있다.
