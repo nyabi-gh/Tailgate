@@ -38,6 +38,8 @@ pub struct General {
 pub struct Browse {
     /// The grid's cell width in CSS pixels, once the user has changed it.
     pub cell_width: Option<u16>,
+    /// Newest first.
+    pub recent_searches: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -311,6 +313,7 @@ mod tests {
         };
         let browse = Browse {
             cell_width: Some(240),
+            recent_searches: vec!["wolf rating:s".into(), "fox".into()],
         };
         settings.set_general(general.clone()).unwrap();
         settings.set_browse(browse.clone()).unwrap();
@@ -342,6 +345,7 @@ mod tests {
         assert!(matches!(saved, Err(SettingsError::NotLoaded)));
         let saved = settings.set_browse(Browse {
             cell_width: Some(200),
+            recent_searches: Vec::new(),
         });
         assert!(matches!(saved, Err(SettingsError::NotLoaded)));
         assert_eq!(fs::read_to_string(&path).unwrap(), "{ not json");

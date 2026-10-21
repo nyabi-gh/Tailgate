@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { Search, X } from "@lucide/svelte";
+  import { History, Search, X } from "@lucide/svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { currentLocale, m } from "../lib/i18n/index.svelte";
   import { shortcutLabel } from "../lib/platform";
   import type { TagSuggestion } from "../lib/posts";
   import { knownCategory, rememberCategories } from "../lib/search.svelte";
+  import { recentSearches } from "../lib/settings.svelte";
   import { categoryDot, categoryTone, parseTag } from "../lib/tags";
 
   let { tags = $bindable([]), onsubmit }: { tags?: string[]; onsubmit: (tags: string[]) => void } = $props();
@@ -18,6 +19,14 @@
   let suggestions = $state.raw<TagSuggestion[]>([]);
   let highlighted = $state(0);
   let open = $state(false);
+  let focused = $state(false);
+  /** Escape hides the recent searches until the field is focused again. */
+  let recentDismissed = $state(false);
+  /** Nothing is picked at first: Enter in the empty field still runs the search without tags. */
+  let recentHighlighted = $state(-1);
+  const showsRecent = $derived(
+    focused && !recentDismissed && draft === "" && tags.length === 0 && recentSearches().length > 0,
+  );
   const cache = new Map<string, TagSuggestion[]>();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -97,6 +106,23 @@
     }, SUGGEST_DELAY_MS);
   }
 
+  function runRecent(query: string) {
+    tags = query.split(" ");
+    recentHighlighted = -1;
+    onsubmit(tags);
+  }
+
+  function onfocus() {
+    focused = true;
+    recentDismissed = false;
+    recentHighlighted = -1;
+  }
+
+  function onblur() {
+    focused = false;
+    closeSuggestions();
+  }
+
   function show(found: TagSuggestion[]) {
     suggestions = found.slice(0, 8);
     highlighted = 0;
@@ -106,7 +132,19 @@
   function onkeydown(event: KeyboardEvent) {
     // Keys pressed while a Hangul or other IME composition is open belong to the composition.
     if (event.isComposing) return;
-    if (open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+    if (showsRecent && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      event.preventDefault();
+      // -1, nothing picked, sits between the last search and the first.
+      const positions = recentSearches().length + 1;
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      recentHighlighted = ((recentHighlighted + 1 + step + positions) % positions) - 1;
+    } else if (showsRecent && event.key === "Enter" && recentHighlighted >= 0) {
+      event.preventDefault();
+      const query = recentSearches()[recentHighlighted];
+      if (query !== undefined) runRecent(query);
+    } else if (showsRecent && event.key === "Escape") {
+      recentDismissed = true;
+    } else if (open && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
       event.preventDefault();
       const step = event.key === "ArrowDown" ? 1 : -1;
       highlighted = (highlighted + step + suggestions.length) % suggestions.length;
@@ -161,12 +199,13 @@
       bind:value={draft}
       {oninput}
       {onkeydown}
-      onblur={closeSuggestions}
+      {onfocus}
+      {onblur}
       type="text"
       spellcheck="false"
       autocomplete="off"
       role="combobox"
-      aria-expanded={open}
+      aria-expanded={open || showsRecent}
       aria-controls="tag-suggestions"
       aria-autocomplete="list"
       placeholder={tags.length === 0 ? m().search.placeholder : ""}
@@ -205,6 +244,35 @@
               {suggestion.name}
             </span>
             <span class="text-xs text-faint">{suggestion.postCount.toLocaleString(currentLocale())}</span>
+          </button>
+        </li>
+      {/each}
+    </ul>
+  {:else if showsRecent}
+    <ul
+      id="tag-suggestions"
+      role="listbox"
+      aria-label={m().search.recent}
+      class="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md bg-panel py-1 shadow-panel"
+    >
+      <li role="presentation" class="px-3 pt-1 pb-1.5 text-xs text-faint">{m().search.recent}</li>
+      {#each recentSearches() as query, index (query)}
+        <li role="option" aria-selected={index === recentHighlighted}>
+          <!-- Pointer-down, not click: a click would blur the field first and close the list. -->
+          <button
+            class={[
+              "flex h-8 w-full items-center gap-2.5 px-3 text-left",
+              index === recentHighlighted ? "bg-selected" : "hover:bg-hover",
+            ]}
+            tabindex="-1"
+            onpointerdown={(event) => {
+              event.preventDefault();
+              runRecent(query);
+            }}
+            onpointerenter={() => (recentHighlighted = index)}
+          >
+            <History size={14} strokeWidth={1.75} class="shrink-0 text-faint" />
+            <span class="min-w-0 flex-1 truncate">{query}</span>
           </button>
         </li>
       {/each}

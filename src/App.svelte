@@ -15,7 +15,7 @@
   import { CELL_WIDTH } from "./lib/layout";
   import { isMac } from "./lib/platform";
   import { favorites, startFavorites, startSearch, tagSearch, type PostList } from "./lib/search.svelte";
-  import { cellWidth, setCellWidth } from "./lib/settings.svelte";
+  import { cellWidth, rememberSearch, setCellWidth } from "./lib/settings.svelte";
   import type { Post } from "./lib/posts";
   import { closeViewer, openPost, viewer } from "./lib/viewer.svelte";
   import type { View } from "./lib/views";
@@ -84,7 +84,9 @@
 
   function run(next: string[]) {
     tags = next;
-    startSearch(next.join(" "));
+    const query = next.join(" ");
+    rememberSearch(query);
+    startSearch(query);
   }
 
   const activeGrid = $derived(view === "favorites" ? favoritesGrid : searchGrid);

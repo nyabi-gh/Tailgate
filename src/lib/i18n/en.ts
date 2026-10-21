@@ -40,6 +40,9 @@ const en = {
     languages: { system: "System", en: "English", ko: "한국어" },
     browse: "Browsing",
     thumbnailSize: "Thumbnail size",
+    recentSearches: "Recent searches",
+    recentCount: (count: number) => (count === 0 ? "None" : count === 1 ? "1 search" : `${count} searches`),
+    clearRecent: "Clear",
     account: "Account",
     e621: "e621",
     notSignedIn: "Not signed in",
@@ -179,6 +182,7 @@ const en = {
   search: {
     placeholder: "Search tags",
     suggestions: "Tag suggestions",
+    recent: "Recent searches",
     removeTag: (tag: string) => `Remove ${tag}`,
     sort: {
       label: "Sort",

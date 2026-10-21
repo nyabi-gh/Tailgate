@@ -19,7 +19,14 @@
   import { settingsChangeMessage } from "../lib/errors";
   import { currentLocale, m, type Language } from "../lib/i18n/index.svelte";
   import { CELL_WIDTH } from "../lib/layout";
-  import { cellWidth, changeGeneralSettings, generalSettings, setCellWidth } from "../lib/settings.svelte";
+  import {
+    cellWidth,
+    changeGeneralSettings,
+    clearRecentSearches,
+    generalSettings,
+    recentSearches,
+    setCellWidth,
+  } from "../lib/settings.svelte";
   import ConnectionStatus from "./ConnectionStatus.svelte";
   import MullvadSignInSheet from "./MullvadSignInSheet.svelte";
 
@@ -170,6 +177,13 @@
           value={cellWidth()}
           oninput={(event) => setCellWidth(Number(event.currentTarget.value))}
         />
+      </div>
+      <div class={row}>
+        <span class={label}>{m().settings.recentSearches}</span>
+        <span class="truncate text-dim">{m().settings.recentCount(recentSearches().length)}</span>
+        <button class={action} disabled={recentSearches().length === 0} onclick={clearRecentSearches}>
+          {m().settings.clearRecent}
+        </button>
       </div>
     </div>
   </section>

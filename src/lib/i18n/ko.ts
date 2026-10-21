@@ -42,6 +42,9 @@ const ko: Messages = {
     languages: { system: "시스템", en: "English", ko: "한국어" },
     browse: "보기",
     thumbnailSize: "썸네일 크기",
+    recentSearches: "최근 검색어",
+    recentCount: (count) => (count === 0 ? "없음" : `${count}개`),
+    clearRecent: "지우기",
     account: "계정",
     e621: "e621",
     notSignedIn: "로그인 안 됨",
@@ -180,6 +183,7 @@ const ko: Messages = {
   search: {
     placeholder: "태그 검색",
     suggestions: "태그 제안",
+    recent: "최근 검색어",
     removeTag: (tag) => `${tag} 빼기`,
     sort: {
       label: "정렬",
