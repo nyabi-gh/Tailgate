@@ -159,7 +159,7 @@ export async function attempt(call: Promise<unknown>): Promise<SettingsChangeErr
   }
 }
 
-function isChangeError(error: unknown): error is SettingsChangeError {
+export function isChangeError(error: unknown): error is SettingsChangeError {
   if (typeof error !== "object" || error === null || !("code" in error)) return false;
   const code = error.code;
   return changeErrorCodes.some((known) => known === code);

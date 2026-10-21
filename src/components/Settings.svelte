@@ -16,6 +16,16 @@
     type LocationChoice,
     type SettingsChangeError,
   } from "../lib/connection.svelte";
+  import {
+    chooseDownloadFolder,
+    downloadDetails,
+    exampleName,
+    isNameRuleError,
+    openDownloadFolder,
+    setDownloadName,
+    type DownloadDetails,
+    type NameRuleError,
+  } from "../lib/downloadSettings";
   import { settingsChangeMessage } from "../lib/errors";
   import { currentLocale, m, type Language } from "../lib/i18n/index.svelte";
   import { CELL_WIDTH } from "../lib/layout";
@@ -42,6 +52,10 @@
   let error = $state<SettingsChangeError | null>(null);
   let accountError = $state<SignInError | null>(null);
   let generalError = $state<SettingsChangeError | null>(null);
+  let downloads = $state<DownloadDetails | null>(null);
+  let nameDraft = $state("");
+  let nameCheck = $state<{ example: string } | { error: NameRuleError } | null>(null);
+  let downloadsError = $state<string | null>(null);
   let mullvadSheet: MullvadSignInSheet;
 
   const status = $derived(connection());
@@ -85,6 +99,46 @@
     generalError = await changeGeneralSettings({ language });
   }
 
+  async function refreshDownloads() {
+    downloads = await downloadDetails();
+    nameDraft = downloads.name;
+    nameCheck = downloads.example === null ? null : { example: downloads.example };
+  }
+  refreshDownloads();
+
+  async function chooseFolder() {
+    downloadsError = null;
+    const outcome = await chooseDownloadFolder();
+    if (outcome !== null && outcome !== "cancelled") downloadsError = settingsChangeMessage(outcome);
+    await refreshDownloads();
+  }
+
+  async function openFolder() {
+    downloadsError = (await openDownloadFolder()) ? null : m().settings.downloads.openFailed;
+  }
+
+  async function checkName() {
+    const draft = nameDraft;
+    const check = await exampleName(draft);
+    // Answers to earlier keystrokes may come back after later ones.
+    if (draft === nameDraft) nameCheck = check;
+  }
+
+  /** On Enter or leaving the field; a rule that cannot be used stays unsaved with its reason. */
+  async function saveName() {
+    if (downloads === null || nameDraft === downloads.name) return;
+    downloadsError = null;
+    const outcome = await setDownloadName(nameDraft);
+    if (outcome === null) downloads = { ...downloads, name: nameDraft };
+    else if (isNameRuleError(outcome)) nameCheck = { error: outcome };
+    else downloadsError = settingsChangeMessage(outcome);
+  }
+
+  function ruleMessage(error: NameRuleError): string {
+    const messages = m().settings.downloads.rule;
+    return error.code === "unknownToken" ? messages.unknownToken(error.token) : messages[error.code];
+  }
+
   async function leaveE621() {
     busy = true;
     accountError = await signOut();
@@ -124,8 +178,11 @@
   const group = "flex flex-col divide-y divide-seam rounded-md bg-raised";
   const row = "flex min-h-11 items-center gap-3 px-3.5 py-2";
   const label = "w-28 shrink-0";
-  const action =
-    "ml-auto h-7 shrink-0 rounded-sm bg-panel px-2.5 text-ink/85 ring-1 ring-seam transition-colors hover:bg-hover disabled:opacity-50";
+  const button =
+    "h-7 shrink-0 rounded-sm bg-panel px-2.5 text-ink/85 ring-1 ring-seam transition-colors hover:bg-hover disabled:opacity-50";
+  const action = `ml-auto ${button}`;
+  const field =
+    "h-8 w-full rounded-sm bg-panel px-2.5 text-ink ring-1 ring-seam outline-none select-text transition-[box-shadow] focus:shadow-[0_0_0_3px] focus:shadow-focus/15 focus:ring-focus/60";
   const segments = "flex rounded-md bg-hover p-0.5";
   const segment = (selected: boolean) => [
     "h-7 rounded-sm px-3 transition-colors",
@@ -186,6 +243,52 @@
         </button>
       </div>
     </div>
+  </section>
+
+  <section class="flex flex-col gap-2">
+    <h2 class="px-1 font-strong">{m().settings.downloads.title}</h2>
+    <div class={group}>
+      <div class={row}>
+        <span class={label}>{m().settings.downloads.folder}</span>
+        <span class="min-w-0 truncate text-dim select-text" title={downloads?.folder}>{downloads?.folder}</span>
+        <div class="ml-auto flex shrink-0 gap-2">
+          <button class={button} onclick={openFolder}>{m().settings.downloads.open}</button>
+          <button class={button} onclick={chooseFolder}>{m().settings.downloads.choose}</button>
+        </div>
+      </div>
+      <div class={[row, "items-start py-3"]}>
+        <label class={[label, "pt-1.5"]} for="file-name">{m().settings.downloads.fileName}</label>
+        <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+          <input
+            id="file-name"
+            class={field}
+            type="text"
+            spellcheck="false"
+            autocomplete="off"
+            bind:value={nameDraft}
+            oninput={checkName}
+            onchange={saveName}
+            onkeydown={(event) => event.key === "Enter" && event.currentTarget.blur()}
+            aria-describedby="file-name-check"
+          />
+          {#if nameCheck !== null && "error" in nameCheck}
+            <p id="file-name-check" class="flex items-start gap-1.5 text-ink" role="alert">
+              <CircleAlert size={14} strokeWidth={1.75} class="mt-0.5 shrink-0" />{ruleMessage(nameCheck.error)}
+            </p>
+          {:else if nameCheck !== null}
+            <p id="file-name-check" class="truncate text-dim select-text">
+              {m().settings.downloads.example(nameCheck.example)}
+            </p>
+          {/if}
+          <p class="text-xs text-faint">{m().settings.downloads.tokens}</p>
+        </div>
+      </div>
+    </div>
+    {#if downloadsError}
+      <p class="flex items-start gap-2 px-1" role="alert">
+        <CircleAlert size={16} strokeWidth={1.75} class="mt-px shrink-0" />{downloadsError}
+      </p>
+    {/if}
   </section>
 
   <section class="flex flex-col gap-2">
