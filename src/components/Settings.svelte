@@ -220,78 +220,6 @@
   </section>
 
   <section class="flex flex-col gap-2">
-    <h2 class="px-1 font-strong">{m().settings.browse}</h2>
-    <div class={group}>
-      <div class={row}>
-        <label class={label} for="thumbnail-size">{m().settings.thumbnailSize}</label>
-        <input
-          id="thumbnail-size"
-          type="range"
-          class="w-48 accent-focus"
-          min={CELL_WIDTH.min}
-          max={CELL_WIDTH.max}
-          step="10"
-          value={cellWidth()}
-          oninput={(event) => setCellWidth(Number(event.currentTarget.value))}
-        />
-      </div>
-      <div class={row}>
-        <span class={label}>{m().settings.recentSearches}</span>
-        <span class="truncate text-dim">{m().settings.recentCount(recentSearches().length)}</span>
-        <button class={action} disabled={recentSearches().length === 0} onclick={clearRecentSearches}>
-          {m().settings.clearRecent}
-        </button>
-      </div>
-    </div>
-  </section>
-
-  <section class="flex flex-col gap-2">
-    <h2 class="px-1 font-strong">{m().settings.downloads.title}</h2>
-    <div class={group}>
-      <div class={row}>
-        <span class={label}>{m().settings.downloads.folder}</span>
-        <span class="min-w-0 truncate text-dim select-text" title={downloads?.folder}>{downloads?.folder}</span>
-        <div class="ml-auto flex shrink-0 gap-2">
-          <button class={button} onclick={openFolder}>{m().settings.downloads.open}</button>
-          <button class={button} onclick={chooseFolder}>{m().settings.downloads.choose}</button>
-        </div>
-      </div>
-      <div class={[row, "items-start py-3"]}>
-        <label class={[label, "pt-1.5"]} for="file-name">{m().settings.downloads.fileName}</label>
-        <div class="flex min-w-0 flex-1 flex-col gap-1.5">
-          <input
-            id="file-name"
-            class={field}
-            type="text"
-            spellcheck="false"
-            autocomplete="off"
-            bind:value={nameDraft}
-            oninput={checkName}
-            onchange={saveName}
-            onkeydown={(event) => event.key === "Enter" && event.currentTarget.blur()}
-            aria-describedby="file-name-check"
-          />
-          {#if nameCheck !== null && "error" in nameCheck}
-            <p id="file-name-check" class="flex items-start gap-1.5 text-ink" role="alert">
-              <CircleAlert size={14} strokeWidth={1.75} class="mt-0.5 shrink-0" />{ruleMessage(nameCheck.error)}
-            </p>
-          {:else if nameCheck !== null}
-            <p id="file-name-check" class="truncate text-dim select-text">
-              {m().settings.downloads.example(nameCheck.example)}
-            </p>
-          {/if}
-          <p class="text-xs text-faint">{m().settings.downloads.tokens}</p>
-        </div>
-      </div>
-    </div>
-    {#if downloadsError}
-      <p class="flex items-start gap-2 px-1" role="alert">
-        <CircleAlert size={16} strokeWidth={1.75} class="mt-px shrink-0" />{downloadsError}
-      </p>
-    {/if}
-  </section>
-
-  <section class="flex flex-col gap-2">
     <h2 class="px-1 font-strong">{m().settings.account}</h2>
     <div class={group}>
       <div class={row}>
@@ -435,6 +363,78 @@
     {/if}
     {#if details?.mode === "wireGuard"}
       <p class="px-1 text-dim">{m().settings.wireGuardNote}</p>
+    {/if}
+  </section>
+
+  <section class="flex flex-col gap-2">
+    <h2 class="px-1 font-strong">{m().settings.browse}</h2>
+    <div class={group}>
+      <div class={row}>
+        <label class={label} for="thumbnail-size">{m().settings.thumbnailSize}</label>
+        <input
+          id="thumbnail-size"
+          type="range"
+          class="w-48 accent-focus"
+          min={CELL_WIDTH.min}
+          max={CELL_WIDTH.max}
+          step="10"
+          value={cellWidth()}
+          oninput={(event) => setCellWidth(Number(event.currentTarget.value))}
+        />
+      </div>
+      <div class={row}>
+        <span class={label}>{m().settings.recentSearches}</span>
+        <span class="truncate text-dim">{m().settings.recentCount(recentSearches().length)}</span>
+        <button class={action} disabled={recentSearches().length === 0} onclick={clearRecentSearches}>
+          {m().settings.clearRecent}
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <section class="flex flex-col gap-2">
+    <h2 class="px-1 font-strong">{m().settings.downloads.title}</h2>
+    <div class={group}>
+      <div class={row}>
+        <span class={label}>{m().settings.downloads.folder}</span>
+        <span class="min-w-0 truncate text-dim select-text" title={downloads?.folder}>{downloads?.folder}</span>
+        <div class="ml-auto flex shrink-0 gap-2">
+          <button class={button} onclick={openFolder}>{m().settings.downloads.open}</button>
+          <button class={button} onclick={chooseFolder}>{m().settings.downloads.choose}</button>
+        </div>
+      </div>
+      <div class={[row, "items-start py-3"]}>
+        <label class={[label, "pt-1.5"]} for="file-name">{m().settings.downloads.fileName}</label>
+        <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+          <input
+            id="file-name"
+            class={field}
+            type="text"
+            spellcheck="false"
+            autocomplete="off"
+            bind:value={nameDraft}
+            oninput={checkName}
+            onchange={saveName}
+            onkeydown={(event) => event.key === "Enter" && event.currentTarget.blur()}
+            aria-describedby="file-name-check"
+          />
+          {#if nameCheck !== null && "error" in nameCheck}
+            <p id="file-name-check" class="flex items-start gap-1.5 text-ink" role="alert">
+              <CircleAlert size={14} strokeWidth={1.75} class="mt-0.5 shrink-0" />{ruleMessage(nameCheck.error)}
+            </p>
+          {:else if nameCheck !== null}
+            <p id="file-name-check" class="truncate text-dim select-text">
+              {m().settings.downloads.example(nameCheck.example)}
+            </p>
+          {/if}
+          <p class="text-xs text-faint">{m().settings.downloads.tokens}</p>
+        </div>
+      </div>
+    </div>
+    {#if downloadsError}
+      <p class="flex items-start gap-2 px-1" role="alert">
+        <CircleAlert size={16} strokeWidth={1.75} class="mt-px shrink-0" />{downloadsError}
+      </p>
     {/if}
   </section>
 </div>
