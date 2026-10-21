@@ -3,6 +3,7 @@ pub mod api;
 mod commands;
 mod media;
 pub mod network;
+mod search;
 pub mod secrets;
 pub mod tunnel;
 
@@ -26,7 +27,11 @@ pub fn run() {
             commands::connection_status,
             commands::account_status,
             commands::sign_in,
-            commands::sign_out
+            commands::sign_out,
+            commands::search_start,
+            commands::search_next,
+            commands::search_close,
+            commands::autocomplete
         ])
         .register_asynchronous_uri_scheme_protocol(media::SCHEME, |context, request, responder| {
             media::handle(context.app_handle(), request, responder)
@@ -39,6 +44,8 @@ pub fn run() {
             let account = Arc::new(Account::new(Arc::clone(&api)));
             app.manage(Arc::clone(&network));
             app.manage(Arc::clone(&account));
+            app.manage(Arc::clone(&api));
+            app.manage(Arc::new(search::Searches::default()));
             app.manage(Arc::new(media::Media::new(
                 network.http().clone(),
                 user_agent,
