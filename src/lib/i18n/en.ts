@@ -165,9 +165,6 @@ const en = {
   },
   search: {
     placeholder: "Search tags",
-    emptyTitle: "Search by tags",
-    emptyBody: "Separate tags with spaces. Put a minus sign in front of a tag to leave it out.",
-    examplesLabel: "Try one",
     suggestions: "Tag suggestions",
     removeTag: (tag: string) => `Remove ${tag}`,
     sort: {

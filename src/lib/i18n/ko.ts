@@ -166,9 +166,6 @@ const ko: Messages = {
   },
   search: {
     placeholder: "태그 검색",
-    emptyTitle: "태그로 검색",
-    emptyBody: "태그는 띄어쓰기로 구분합니다. 태그 앞에 -를 붙이면 그 태그가 붙은 게시물은 빠집니다.",
-    examplesLabel: "예시",
     suggestions: "태그 제안",
     removeTag: (tag) => `${tag} 빼기`,
     sort: {

@@ -243,6 +243,19 @@ mod tests {
         );
     }
 
+    /// The search screen opens on this: e621's own front page, the newest posts.
+    #[tokio::test(start_paused = true)]
+    async fn an_empty_search_lists_the_newest_posts_by_cursor() {
+        let (api, mut received) =
+            fake_api(vec![ok(&posts((101..=200).rev())), ok(&posts([100]))]).await;
+        let mut search = PostSearch::new("");
+        search.next_page(&api).await.unwrap();
+        search.next_page(&api).await.unwrap();
+        let requests = drain(&mut received);
+        assert_eq!(requests[0].target, "/posts.json?tags=&limit=100");
+        assert_eq!(requests[1].target, "/posts.json?tags=&limit=100&page=b101");
+    }
+
     #[tokio::test(start_paused = true)]
     async fn pages_by_number_when_the_search_sets_an_order() {
         let (api, mut received) = fake_api(vec![ok(&posts(1..=100)), ok(&posts(101..=150))]).await;

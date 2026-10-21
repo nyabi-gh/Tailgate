@@ -1,7 +1,6 @@
 <script lang="ts">
   import { ZoomIn } from "@lucide/svelte";
   import { tick, untrack } from "svelte";
-  import EmptySearch from "./components/EmptySearch.svelte";
   import Grid from "./components/Grid.svelte";
   import Settings from "./components/Settings.svelte";
   import SignInSheet from "./components/SignInSheet.svelte";
@@ -83,11 +82,6 @@
     }
   }
 
-  function addTag(tag: string) {
-    if (!tags.includes(tag)) tags = [...tags, tag];
-    tagInput?.focus();
-  }
-
   function run(next: string[]) {
     tags = next;
     startSearch(next.join(" "));
@@ -117,6 +111,9 @@
   });
 
   onSignInNeeded(() => signInSheet.open());
+
+  // A search without tags is e621's front page, the newest posts; the app opens on it.
+  startSearch("");
 
   // The favorites load the first time their screen opens while signed in.
   $effect(() => {
@@ -157,9 +154,7 @@
     <!-- Both grids stay mounted, so each screen keeps its scroll position. -->
     <section class="relative min-h-0 flex-1">
       <div class={["absolute inset-0", view !== "search" && "invisible"]}>
-        {#if tagSearch.query === null}
-          <div class="h-full overflow-auto"><EmptySearch onpick={addTag} /></div>
-        {:else}
+        {#if tagSearch.query !== null}
           <Grid
             bind:this={searchGrid}
             list={tagSearch}
