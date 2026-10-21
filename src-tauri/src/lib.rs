@@ -27,6 +27,11 @@ pub fn run() {
         .init();
 
     tauri::Builder::default()
+        // First, so a second launch exits before it opens a tunnel: two tunnels with the same
+        // WireGuard key cut each other off at the server (docs/report.md §6.6).
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            focus_main_window(app)
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
@@ -113,6 +118,19 @@ fn forward<T: Clone + serde::Serialize + Send + Sync + 'static>(
             }
         }
     });
+}
+
+fn focus_main_window(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let shown = window
+        .unminimize()
+        .and_then(|()| window.show())
+        .and_then(|()| window.set_focus());
+    if let Err(error) = shown {
+        tracing::warn!("could not bring the window forward: {error}");
+    }
 }
 
 /// Built in code rather than tauri.conf.json so platform-specific window options live in one place.
