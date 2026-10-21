@@ -6,20 +6,21 @@
 
 1단계 1~8번이 끝났다. 터널·킬 스위치·`media://`(동영상 블록 캐시), API 계층, 계정(로그인·키체인), 검색(태그 칩·자동완성·정렬·3:4 격자·가상/무한 스크롤), 블랙리스트(e621 사이트와 같은 규칙), 뷰어(전환 효과·줌·원본·GIF·동영상·정보 패널), 즐겨찾기·투표·다운로드와 즐겨찾기 화면이 실제 앱에서 동작한다. 모두 커밋해 공개 저장소 https://github.com/nyabi-gh/Tailgate 에 올렸다.
 
-다음은 9번 연결 설정이다. **설정 화면이 아직 없다**(사이드바의 ⚙와 연결 표시를 누르면 빈 화면). 9번에서 설정 화면의 틀(계정·연결 칸)부터 만든다.
+9번 연결 설정을 구현해 커밋했다(2026-10-21). 설정 화면(계정·연결 칸), 직접 / WireGuard 파일 / Mullvad 로그인·위치 선택, 서버 목록 디스크 캐시, 실행 중 끊김 감지·자동 재연결, 라우트 전환 시 연결 끊기. 테스트와 화면 캡처까지 확인했고, 손으로 해 보는 확인은 사용자 차례다(아래 "남은 일").
 
 ## 구현 현황
 
 | 영역 | 파일 | 상태 |
 |---|---|---|
-| 창·UI 껍데기 | `lib.rs`, `App.svelte`, `components/` | 반투명 사이드바, 떠 있는 본문 패널(반경 14px), 검색창(⌘K / Ctrl K, `/`), 빈 검색 화면과 예시 태그, 영어·한국어, 화면 아래 알림. 앱 아이콘(`src-tauri/icons/source.svg`가 원본). 사이드바의 인기·풀·세트·설정 화면은 아직 비어 있음 |
-| 연결 표시 | `Sidebar.svelte`, `connection.svelte.ts` | 직접 / 연결 중 / `VPN · 서버` / 실패(원인은 마우스를 올리면) |
+| 창·UI 껍데기 | `lib.rs`, `App.svelte`, `components/` | 반투명 사이드바, 떠 있는 본문 패널(반경 14px), 검색창(⌘K / Ctrl K, `/`), 빈 검색 화면과 예시 태그, 영어·한국어, 화면 아래 알림. 앱 아이콘(`src-tauri/icons/source.svg`가 원본). 사이드바의 인기·풀·세트 화면은 아직 비어 있음 |
+| 연결 표시 | `Sidebar.svelte`, `ConnectionStatus.svelte`, `connection.svelte.ts` | 직접 / 연결 중 / `VPN · 서버` / 실패(원인은 마우스를 올리면). 설정 화면과 같은 표시 |
+| 설정 화면 | `Settings.svelte`, `MullvadSignInSheet.svelte`, `settings.rs` | 계정 칸(e621 로그인·로그아웃), 연결 칸(상태·다시 연결, 방식 분할 버튼, WireGuard 파일·서버, Mullvad 기기·만료·위치, 로그인 시트). 설정은 `~/Library/Application Support/pro.tb.nyabi.Tailgate/settings.json`. 나머지 설정 항목은 10번 |
 | 키체인 | `secrets.rs` | 완료 |
-| `.conf` 파서 | `tunnel/config.rs` | 완료. 가져오기 화면은 1단계 9번 |
-| Mullvad | `tunnel/mullvad.rs` | 토큰, 기기 등록·삭제, 서버 목록. 위치는 `jp-tyo` 고정 |
+| `.conf` 가져오기 | `tunnel/config.rs`, `network.rs`, `commands.rs` | Rust가 파일 대화상자를 열고 읽어 키체인 `wireguard-config`에 저장 |
+| Mullvad | `tunnel/mullvad.rs`, `relays.rs`, `network.rs` | 토큰, 기기 등록·삭제, 만료일, 서버 목록(ETag, `~/Library/Caches/pro.tb.nyabi.Tailgate/relays.json`, 약 90KB), 도시별 위치 목록, 도시 안에서 무작위 서버. 로그인·로그아웃 |
 | 터널 | `tunnel/` | gotatun + smoltcp + SOCKS5. 핸드셰이크가 끝나야 시작 성공, 무응답 연결은 45초에 끊음 |
-| 킬 스위치 | `network.rs`, `tunnel/socks.rs` | report.md 6.3절 1~3 구현. 4·5(실행 중 전환·끊김 감지)는 1단계 9번 |
-| 실패 코드 | `network.rs` → `connection.svelte.ts` → i18n | report.md 6.4절의 6가지 |
+| 킬 스위치·재연결 | `network.rs`, `tunnel/socks.rs`, `tunnel/mod.rs` | report.md 6.3절 1~6. `Network::run`이 연결을 맡고, 라우트가 바뀌면 옛 연결을 끊고, 터널 건강 검사(120초 넘으면 핸드셰이크, 20초 제한), 일시적 실패는 1~60초 간격으로 다시 시도 |
+| 실패 코드 | `network.rs` → `connection.svelte.ts` → i18n | report.md 6.4절의 11가지와 설정 변경 오류 |
 | 타임아웃 | `network.rs`, `tunnel/` | report.md 6.5절 |
 | `media://` | `media/`, `media.ts` | 이미지는 통째로, 동영상은 1MB 블록 캐시(`media/blocks.rs`, 메모리 256MB, 다음 블록 미리 받기)로 응답. report.md 7.2절 |
 | 라이선스 | `LICENSE` | MIT. 배포물 고지는 1단계 11번 |
@@ -29,7 +30,7 @@
 | 블랙리스트 | `blacklist.rs`, `search.rs`, `search.svelte.ts`, `Grid`, `Thumb` | e621ng 규칙 그대로(research.md 2절). 블랙리스트는 자격 증명마다 `/users/me`로 한 번 받고(익명이면 사이트 기본 목록), 받기 전에는 게시물을 보내지 않음. 전부 걸린 페이지는 한 번에 최대 5페이지까지 이어 받음. 그리드 오른쪽 아래 "N개 숨김"으로 그 검색 동안 보이기, 보인 것엔 눈 가림 표시 |
 | 뷰어 | `Viewer`, `MediaStage`, `InfoPanel`, `viewer.svelte.ts`, `zoom.ts`, `media.ts` | 썸네일에서 커지며 열리고 그 자리로 닫힘(View Transitions), 이미지 샘플 → 확대하거나 요청하면 원본, GIF는 원본, 동영상 720p 우선·반복·음소거 시작, 휠·핀치 확대·끌기·더블클릭 맞춤/1:1, 이전·다음(끝 5개 전에 다음 페이지), 정보 패널(점수·즐겨찾기·등급·파일·업로더·출처·카테고리별 태그), ←/→·Esc·I·0 |
 | 즐겨찾기·투표·다운로드 | `api/`, `search.rs`, `download.rs`, `actions.svelte.ts`, `search.svelte.ts`, `InfoPanel`, `Toasts`, `App` | 뷰어 패널의 ♥·▲·▼·↓와 F·↑·↓·D(누르면 바로 반영, e621 응답으로 맞추고 실패하면 되돌림), 로그인 안 했으면 로그인 시트, 다운로드는 `~/Downloads/Tailgate/{id}_{artist}.{ext}`로 `.part`를 거쳐 저장·진행률·"Finder에서 보기", 사이드바 즐겨찾기 화면(즐겨찾기한 순서, 블랙리스트 적용). 검색과 즐겨찾기는 화면마다 따로 열려 결과와 스크롤을 기억 |
-| 설정 이후 (1단계 9~11번) | | 시작 전 |
+| 설정 이후 (1단계 10~11번) | | 시작 전 |
 
 ## 재검토에서 고친 것 (2026-10-19)
 
@@ -72,7 +73,15 @@
 | 10-21 | 뷰어 | `npm test`(16: 줌 7), 실제 앱(임시 코드로 열기·닫기, 사용자가 GIF와 이미지 확대 직접 확인) | View Transitions 지원(`VT: yes`), 동영상 게시물 재생과 정보 패널 표시, GIF 재생, 이미지 확대 |
 | 10-21 | 즐겨찾기·투표·다운로드 | `cargo test`(75: 쓰기 요청의 메서드·경로·본문, 즐겨찾기 페이지 넘김, 화면별 검색, 다운로드 이름 규칙·`.part`·이미 있는 파일·실패 정리·static1 밖 거부), `npm run check`·`build`, 실제 앱(사용자가 직접) | 통과. 사용자 확인: 즐겨찾기 추가·해제, 투표·취소, 다운로드, 즐겨찾기 화면, 화면 전환. 앱 로그에 경고·오류 없음(`/favorites.json` 디코딩 포함) |
 
+| 10-21 | 연결 설정 | `cargo test`(99: SOCKS 라우트 전환 2 — 고치기 전 동작에서 실패 확인, 설정 파일 4, 서버 목록 캐시 5, 연결 13: 첫 실행·설정 손상·키체인 오류·로그인 필요·WireGuard 없음/손상·방식 변경·재시도 간격·가져오기·Mullvad 로그인·로그인 실패·로그아웃·기기 삭제 실패), `cargo clippy`·`fmt`, `npm run check`·`build`·`test`, 실제 앱(첫 실행, 캐시 없음) | 통과. 앱: 설정 파일 없이 저장된 기기로 `jp-tyo-wg-201` 터널(무작위 선택), 서버 목록 저장(90KB), e621 로그인 확인. 임시 코드로 설정 화면을 열어 캡처: 상태·방식·기기 `divine condor`·만료일·위치 "일본 · Tokyo" 표시. Mullvad API에 304·오류 코드 직접 확인(research.md 6절) |
+
 ## 남은 일
+
+- **9번 사용자 확인**: 방식 바꾸기(직접으로 바꾸면 e621이 막히는지, 다시 Mullvad), 위치 바꾸기, "다시 연결", e621 로그아웃·로그인(설정 칸에서), Wi-Fi를 3분 넘게 껐다 켜서 끊김 감지·자동 재연결, 재연결 뒤 썸네일 다시 받기. Mullvad 로그아웃·로그인(기기 `divine condor`가 지워지고 새 기기가 등록됨)과 `.conf` 가져오기(mullvad.net에서 만들면 기기 칸을 하나 씀)는 원할 때만.
+- 끊김 감지는 테스트로 고정하지 못했다(실제 WireGuard 상대가 필요). 실제 앱에서 Wi-Fi를 끄는 방법으로만 확인한다. macOS 잠자기 동안 단조 시계가 멈추는 경우의 동작도 확인하지 않았다.
+- Mullvad 오류 `MAX_DEVICES_REACHED`, `DEVICE_NOT_FOUND`는 소스의 이름만 따랐고 실제로 받아 보지 않았다.
+- 설정 화면의 다크 모드, 위치 메뉴를 펼친 모양, 로그인 시트 오류 표시는 아직 못 봤다.
+- 서버 목록을 새로 받아 서버를 다시 고르는 경로(사본의 서버가 사라진 경우)는 테스트하지 않았다.
 
 - 뷰어에서 원본 이미지가 다 받아지는 시간, 원본만 WebM인 게시물의 재생(아래 WebM 항목), 키보드 조작은 직접 재 보지 않았다.
 - 블랙리스트는 앱을 켠 동안 자격 증명마다 한 번만 받는다. e621 사이트에서 블랙리스트를 고치면 앱을 다시 켜거나 다시 로그인해야 반영된다. 설정 파일에 마지막 값을 저장하는 것(report.md 7.3절)은 10번에서.
@@ -87,7 +96,6 @@
 - **터널 직후 첫 요청이 가끔 `TtlExpired`로 실패**(37회 중 2회, research.md 7절). 재현될 때 DNS 질의·응답이 오갔는지 보려면 smoltcp `log` 기능이나 netstack 임시 로그가 필요하다(다시 빌드하면 키체인 허용 창이 뜬다). 앱에서 생기면 첫 화면 요청이 10~15초 뒤 실패하므로 1단계 9번 전에 다룬다.
 - 터널 시작이 5.3초 걸린 1회(첫 핸드셰이크 재전송으로 보임)가 다시 나오는지 지켜본다.
 - 터널 안 연결이 리셋되거나 timeout으로 끊기면 읽기가 오류가 아니라 EOF로 끝난다. 지금은 모든 요청이 TLS라 잘림이 오류로 드러나지만, 평문 요청을 쓰게 되면 `netstack.rs`에서 구분해야 한다.
-- 1단계 9번: 실행 중 끊김 감지·재연결, 라우트 전환 시 연결 끊기(report.md 6.3절 4·5), 서버 목록 디스크 캐시(터널 시작 3~4초의 대부분), 키체인 실패 후 다시 시도.
 - Windows 실측 전부: 터널, aws-lc-rs 빌드, WebView2의 `media://` Range, Mica, Ctrl K. Windows 기기나 VM이 필요하다.
 - macOS WKWebView의 WebM 재생 확인.
 - Developer ID Application 인증서 발급(1단계 11번 전, 키체인에 아직 없음).
@@ -95,8 +103,9 @@
 
 ## 다음 할 일
 
-1. 1단계 9번 연결 설정 완성. 설정 화면이 아직 없으므로 그 틀(계정·연결 칸)부터 만든다. 나머지 설정 항목은 10번.
-2. 터널 직후 첫 요청 실패의 원인 추적(위 "남은 일").
+1. 9번 사용자 확인(위 "남은 일" 첫 항목).
+2. 터널 직후 첫 요청 실패의 원인 추적(위 "남은 일"). 재연결이 생겨 "터널 직후 첫 요청"이 더 자주 생긴다.
+3. 1단계 10번: 나머지 설정(다운로드 폴더·파일명 규칙, 썸네일 크기, 캐시 비우기, 언어), 18세 확인.
 
 ## 개발 메모
 
@@ -108,5 +117,6 @@
 - 검사: `cargo test`, `cargo clippy --all-targets`, `cargo fmt --check`(`src-tauri`), `npm test`, `npm run check`, `npm run build`. Svelte 경고는 `npm run check`가 아니라 `npm run build`에서만 나오는 것이 있으니 둘 다 본다.
 - 클릭·입력이 필요한 화면 확인은 사용자가 개발 앱에서 직접 한다. 꼭 필요할 때만 커밋하지 않는 임시 자동 실행 코드(`// TEMP verification`)를 `App.svelte`에 넣고 확인 뒤 지운다. 창이 다른 창에 가려지면 WebKit이 타이머와 미디어를 멈추니 그동안 창을 앞에 두어야 한다.
 - 다운로드는 `~/Downloads/Tailgate`에 저장된다.
+- 연결 설정을 처음 상태로 되돌리려면 앱을 끄고 `settings.json`을 지운다(첫 실행 규칙을 다시 탄다). 서버 목록 캐시는 `relays.json`을 지우면 다음 연결에서 새로 받는다.
 - 원격 저장소: `origin` = https://github.com/nyabi-gh/Tailgate (공개). 공개 저장소 생성 같은 명령은 권한 검사에 막혀 사용자가 직접 실행했다.
 - 화면 확인: 키 입력 자동화(손쉬운 사용) 권한은 없고 화면 기록 권한은 있다. 창 캡처는 `CGWindowListCopyWindowInfo`로 창 번호를 찾아 `screencapture -l <번호>`. CSS 계산값은 작은 Swift 프로그램으로 WKWebView에 빌드된 CSS를 띄워 `getComputedStyle`로 잰다.

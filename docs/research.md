@@ -152,6 +152,9 @@ OS에 TUN 인터페이스를 만들면 관리자 권한(macOS 네트워크 확�
   - 생성 `POST` `{pubkey, hijack_dns: false}` → 201, `{id, name, pubkey, ipv4_address, ipv6_address, created}` — 터널 주소를 여기서 받는다.
   - 목록 `GET`, 조회 `GET /{id}`, 삭제 `DELETE /{id}` → 204, 키 교체 `PUT /{id}/pubkey`
 - Mullvad 계정당 기기 수 제한이 있다(일반적으로 5대로 알려짐, 미확인). 앱이 기기 하나를 차지하므로 로그아웃 시 기기를 지운다.
+- 계정 정보: `GET accounts/v1/accounts/me`(Bearer) → `expiry`(RFC 3339). 실제 계정으로 확인(2026-10-21).
+- 오류 응답은 `{"code": …}`. 직접 확인(2026-10-21): 없는 계정 번호 → 400 `INVALID_ACCOUNT`, 9자리보다 짧은 번호 → 400 `INVALID_INPUT`, 잘못된 토큰 → 401 `INVALID_ACCESS_TOKEN`. 기기 수 초과 `MAX_DEVICES_REACHED`, 없는 기기 삭제 `DEVICE_NOT_FOUND`는 `mullvad-api` 소스의 이름이고 실제로 받아 보지는 않았다.
+- 서버 목록은 `ETag`를 주고 `If-None-Match`에 304(본문 0바이트)로 답한다(2026-10-21 확인). 앱은 필요한 필드만 추려 저장하므로 디스크 사본은 약 90KB다.
 
 ### 웹뷰 트래픽 (처음 계획 → 폐기)
 처음 계획은 웹뷰에 프록시를 지정해(`proxy_url`, macOS 14+와 `mac-proxy` 필요) 웹뷰도 앱의 SOCKS를 타게 하는 것이었다. 실제로 웹뷰 요청이 SOCKS로 들어오는 것까지는 확인했다. 그러나 static1의 핫링크 차단 때문에 웹뷰 요청은 프록시와 상관없이 403이었다(7절). 그래서 미디어도 Rust가 받아 `media://` 커스텀 프로토콜로 넘기는 방식으로 바꾸고, 웹뷰 프록시는 없앴다.
@@ -203,7 +206,9 @@ OS에 TUN 인터페이스를 만들면 관리자 권한(macOS 네트워크 확�
 ### gotatun 0.10.1
 - `DeviceBuilder::build()`는 UDP 소켓을 열고 작업을 띄운 뒤 바로 돌아온다. **핸드셰이크를 기다리지 않는다**(`device/builder.rs` `build`, `device/mod.rs` `Connection::set_up`). 서버에 닿지 않아도 성공한다.
 - `Device::force_handshake(&public_key)`: 유효한 세션이 있으면 바로 돌아오고, 없으면 핸드셰이크를 시작해 끝날 때까지 기다린다. 시간 제한이 없으므로 호출하는 쪽이 건다(`device/mod.rs`).
-- `Device::wait()`: 복구할 수 없는 오류가 날 때까지 기다린다. 피어 통계 `Stats.last_handshake`는 마지막 핸드셰이크 뒤 지난 시간이다(`device/configure.rs`, `Device::read()`로 읽음). 둘 다 실행 중 끊김 감지에 쓸 수 있다.
+- `Device::wait()`: 복구할 수 없는 오류가 날 때까지 기다린다. 피어 통계 `Stats.last_handshake`는 마지막 핸드셰이크 뒤 지난 시간이고, 세션이 없으면 `None`이다(`device/configure.rs`, `noise/timers.rs` `time_since_last_handshake`, `Device::read()`로 읽음).
+- **재키잉은 데이터 패킷을 보낼 때만 일어난다**: 개시자는 세션이 `REKEY_AFTER_TIME`(120초)을 넘고 그 뒤 데이터 패킷(빈 keepalive 제외)을 보냈을 때 새 핸드셰이크를 건다(`noise/timers.rs` `update_timers`). 그래서 keepalive만 오가는 쉬는 터널은 `last_handshake`가 180초를 정상적으로 넘긴다. 이 값만으로는 끊김을 판단할 수 없어, 120초가 넘으면 `force_handshake`로 직접 확인한다(report.md 6.3절 5).
+- 데이터를 보냈는데 `KEEPALIVE + REKEY_TIMEOUT`(15초) 동안 응답이 없으면 gotatun이 스스로 핸드셰이크를 건다. 세션 키는 `REJECT_AFTER_TIME * 3`(540초) 뒤 지워진다.
 - 핸드셰이크 재시도 간격 `REKEY_TIMEOUT`은 5초(+지터), 시도 한도 `REKEY_ATTEMPT_TIME`은 90초(`noise/timers.rs`).
 - `IpRecv::recv`가 오류를 돌려주면 송신 루프가 "Unexpected error on tun interface"를 남기고 끝난다(`device/mod.rs` `handle_outgoing`). gotatun 자체 TUN 리더는 파싱할 수 없는 패킷을 오류로 돌려준다(`tun/tun_async_device.rs`). 그래서 우리 어댑터(`wg.rs`)는 이상한 패킷을 오류로 올리지 않고 버린다.
 - `Device`를 `stop()` 없이 버리면 Drop이 정지 작업을 띄운다.

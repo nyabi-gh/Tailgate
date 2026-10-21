@@ -97,7 +97,8 @@ tailgate/
       search.rs          화면마다 하나씩 열린 검색(태그 검색, 내 즐겨찾기), 검색어 태그의 카테고리를 결과에서 찾기
       blacklist.rs       파서 + 평가기 (e621ng의 블랙리스트 코드를 옮김)
       account.rs         API 키 저장/삭제(키체인 `e621-account`), 로그인·로그아웃, 시작 시 복원·확인, 401 처리, 계정 상태(watch)
-      settings.rs        설정 JSON (앱 설정 디렉터리) — 10번, 아직 없음
+      settings.rs        설정 JSON (앱 설정 디렉터리의 `settings.json`). 9번에서 연결 설정, 10번에서 나머지
+      relays.rs          Mullvad 서버 목록 디스크 캐시(앱 캐시 디렉터리의 `relays.json`, ETag), 위치 목록, 서버 고르기
       download.rs        원본 다운로드(`.part`로 받아 이름 바꾸기, 진행률 이벤트), 파일명 `{id}_{artist}.{ext}`, 기본 폴더 `~/Downloads/Tailgate`(설정은 10번)
     examples/
       tunnel_probe.rs    실제 Mullvad 서버로 터널을 검증하는 수동 점검 도구
@@ -105,7 +106,7 @@ tailgate/
     tests/fixtures/      Pawru 픽스처 재사용 (실제 응답 JSON)
   src/                   Svelte 5 + TypeScript
     lib/
-      connection.svelte.ts  연결 상태 (명령 + 이벤트 구독), canLoadRemote()
+      connection.svelte.ts  연결 상태 (명령 + 이벤트 구독), canLoadRemote(), routeCount(), 연결 설정 명령
       account.svelte.ts  계정 상태 (명령 + 이벤트 구독), signIn/signOut
       media.ts           static1 URL → media:// 주소, 뷰어에 띄울 미디어 선택(viewerMedia)
       platform.ts        OS 판별, 단축키 표기
@@ -120,7 +121,7 @@ tailgate/
       errors.ts          API 오류 코드 → 문구
       posts.ts           Rust 모델의 TS 타입, API 오류 코드
       tags.ts            태그 토큰 해석(제외·메타태그), 카테고리 색
-    components/          Sidebar, EmptySearch, TagInput, SortMenu, Grid, Thumb, Viewer, MediaStage, InfoPanel, SignInSheet, Toasts …
+    components/          Sidebar, ConnectionStatus, EmptySearch, TagInput, SortMenu, Grid, Thumb, Viewer, MediaStage, InfoPanel, SignInSheet, Settings, MullvadSignInSheet, Toasts …
     styles/app.css       Tailwind 진입점, 디자인 토큰(CSS 변수 + @theme), 기본 스타일
 ```
 
@@ -168,22 +169,24 @@ Svelte 화면 → search.svelte.ts → invoke("search_next", {id})
 
 ### 6.2 연결 방식
 
-설정 > 연결 화면은 1단계 9번에서 만든다.
+설정 화면의 "연결" 칸에서 고른다. 방식(`direct`/`wireGuard`/`mullvad`)과 Mullvad 위치는 `settings.json`에, 비밀 값은 키체인에 둔다. 방식을 바꾸면 저장한 뒤 바로 다시 연결한다.
 
 - **직접 연결**: SOCKS가 그냥 직접 연결한다.
-- **WireGuard 설정 파일**: 표준 `.conf`를 가져온다(`PrivateKey`, `Address`, `DNS`, 피어의 `PublicKey`, `PresharedKey`, `Endpoint`, `PersistentKeepalive`). 첫 `[Peer]`만 쓴다. `AllowedIPs`는 앱 트래픽 전체를 보내므로 무시한다. 터널 안 DNS가 꼭 필요하므로 `DNS`가 없는 설정은 거절한다.
-- **Mullvad**: 계정 번호 → 토큰 → 앱이 키 쌍을 만들어 기기로 등록 → 받은 터널 주소와 서버 목록으로 설정을 만든다. 서버는 국가/도시로 고른다(지금은 `jp-tyo` 고정). 로그아웃하면 기기 등록을 지운다.
-- **지금의 임시 규칙**: 키체인에 Mullvad 기기(`mullvad-device`)가 있으면 터널, 없다고 확인되면 직접 연결. 설정 화면이 생기면 설정 파일에 저장한 방식을 따른다.
+- **WireGuard 설정 파일**: 표준 `.conf`를 가져온다(`PrivateKey`, `Address`, `DNS`, 피어의 `PublicKey`, `PresharedKey`, `Endpoint`, `PersistentKeepalive`). 첫 `[Peer]`만 쓴다. `AllowedIPs`는 앱 트래픽 전체를 보내므로 무시한다. 터널 안 DNS가 꼭 필요하므로 `DNS`가 없는 설정은 거절한다. 파일 대화상자는 Rust가 열고(`tauri-plugin-dialog`) 파일도 Rust가 읽어 키체인 `wireguard-config`에 원문 그대로 저장한다. 개인 키가 웹뷰를 거치지 않는다. 설정 파일에는 파일 이름과 서버 주소만 적는다.
+- **Mullvad**: 계정 번호 → 토큰 → 앱이 키 쌍을 만들어 기기로 등록 → 받은 터널 주소와 서버 목록으로 설정을 만든다. 계정 번호는 로그인 시트에서 한 번 보내고 지우며, 화면에는 기기 이름과 만료일만 돌아온다. 서버는 도시로 고르고 그 도시의 활성 서버 중 하나를 무작위로 쓴다(Mullvad 앱과 같음). 로그인할 때 남아 있던 기기가 있으면 먼저 지운다. 로그아웃은 계정에서 기기를 지운 다음 키체인 항목을 지우고, 기기 삭제가 실패하면 아무것도 바꾸지 않는다(기기 칸이 쓸 수 없는 키로 남지 않게). 로그아웃해도 방식은 Mullvad로 남아 연결이 막힌다. 직접 연결로 저절로 넘어가지 않는다.
+- **첫 실행**(`settings.json`에 연결 설정이 없을 때): 키체인에 Mullvad 기기가 있으면 Mullvad `jp-tyo`, 없다고 확인되면 직접 연결. 설정 파일을 읽지 못했거나 손상됐으면 첫 실행이 아니라 실패(`settings`)다.
+- **서버 목록 캐시**: 받은 목록은 필요한 필드만 추려 ETag와 함께 `relays.json`에 둔다. 연결할 때 메모리나 디스크 사본이 있으면 바로 쓰고, 연결된 뒤 `If-None-Match`로 새로 받는다(바뀌지 않았으면 304). 사본으로 고른 서버가 핸드셰이크에 실패하거나 위치에 서버가 없으면 목록을 새로 받아 한 번 더 시도한다. 사본이 깨졌으면 무시하고 받는다(경로를 정하는 값이 아니므로 킬 스위치와 무관).
 
 ### 6.3 킬 스위치
 
 트래픽이 의도하지 않은 경로로 나가지 않게 하는 규칙이다. 1·3은 `network.rs`의 테스트로 고정한다(목 키체인으로 오류를 넣고, 로컬 서버에 요청이 닿는지 본다).
 
-1. **프록시는 막힌 채(`Blocked`)로 시작한다.** 저장된 설정을 읽어 직접 연결이라고 확인된 경우에만 `Direct`로 연다. 키체인을 읽지 못했거나(접근 거부, 잠김) 저장 값이 깨졌으면 막힌 채로 두고 `failed`를 알린다. 오류를 "설정 없음"으로 취급하지 않는다.
+1. **프록시는 막힌 채(`Blocked`)로 시작한다.** 저장된 설정을 읽어 직접 연결이라고 확인된 경우에만 `Direct`로 연다. 설정 파일이나 키체인을 읽지 못했거나(접근 거부, 잠김) 저장 값이 깨졌으면 막힌 채로 두고 `failed`를 알린다. 오류를 "설정 없음"으로 취급하지 않는다.
 2. **터널은 WireGuard 핸드셰이크가 끝난 뒤에만 연다.** gotatun 장치를 만드는 것만으로는 서버에 닿는다는 보장이 없다(research.md 8절). 핸드셰이크가 끝나야 라우트를 `Tunnel`로 바꾸고 `tunnel` 상태를 알린다.
 3. **실패하면 `Blocked`로 남는다.** 터널 모드에서 직접 연결로 넘어가는 코드 경로는 없다.
-4. **라우트를 바꾸면 그 전 라우트로 중계 중인 연결을 모두 끊는다.** 라우트는 SOCKS 연결을 맺을 때 정해지므로, 그대로 두면 reqwest가 풀에 둔 연결을 계속 써서 옛 경로로 트래픽이 나간다. 지금은 라우트가 시작할 때 `Blocked`에서 한 번만 바뀌고 막힌 연결은 풀에 남지 않아 문제가 없다. 실행 중 전환(연결 방식 바꾸기, 끊김 감지)을 넣는 1단계 9번에서 함께 구현한다.
-5. **실행 중 끊김을 감지하면 `Blocked`로 바꾸고 `failed`를 알린다**(1단계 9번). gotatun 피어 통계의 `last_handshake`가 재키잉 주기를 넘도록 갱신되지 않거나 `Device::wait()`가 치명적 오류를 알리면 끊긴 것으로 본다. 그다음 다시 연결을 시도한다.
+4. **라우트를 바꾸면 그 전 라우트의 연결을 모두 끊는다.** 라우트는 SOCKS 연결을 맺을 때 정해지므로, 그대로 두면 reqwest가 풀에 둔 연결을 계속 써서 옛 경로로 트래픽이 나간다. `SocksServer`는 라우트를 `watch`로 갖고, 중계 중이거나 아직 연결 중인 요청은 라우트가 바뀌면 바로 닫는다. 바꾸는 순서는 `Blocked`(옛 연결 끊김) → 옛 터널 정지 → 새 경로 → 새 라우트라서 두 경로가 함께 열리는 순간이 없다.
+5. **실행 중 끊김을 감지하면 `Blocked`로 바꾸고 `failed {connectionLost}`를 알린 뒤 다시 연결한다.** 5초마다 피어의 `last_handshake`를 보고, 120초(재키잉 주기)가 넘었으면 직접 핸드셰이크를 걸어 20초 안에 끝나지 않으면 끊긴 것으로 본다. gotatun은 데이터를 보낼 때만 재키잉해서, 쉬는 터널은 핸드셰이크 시각만으로 판단할 수 없기 때문이다(research.md 8절). `Device::wait()`가 치명적 오류를 알려도 끊긴 것이다. 진행 중인 요청은 그보다 먼저 smoltcp의 45초 무응답 제한이 끊는다.
+6. **다시 연결.** `Network::run` 한 작업이 연결을 맡는다. 일시적인 실패(`relayList`, `tunnel`, `handshake`, `connectionLost`)는 1·2·4…초, 최대 60초 간격으로 계속 다시 시도한다. 키체인·설정 손상·로그인 필요처럼 다시 해도 같은 실패는 사용자가 무언가 바꿀 때(설정 변경, "다시 연결")까지 기다린다. 시도하는 동안은 `connecting`, 실패하면 다음 시도까지 `failed`다.
 
 ### 6.4 연결 상태
 
@@ -202,11 +205,20 @@ Svelte 화면 → search.svelte.ts → invoke("search_next", {id})
 | 코드 | 원인 |
 |---|---|
 | `credentialStore` | 키체인을 읽지 못함(접근 거부, 잠김) |
+| `settings` | 설정 파일을 읽지 못함, 손상됨 |
 | `savedDevice` | 저장된 Mullvad 기기 정보가 깨짐 |
+| `noWireGuardConfig` | WireGuard 방식인데 가져온 파일이 없음 |
+| `savedConfig` | 저장된 WireGuard 설정이 깨짐 |
+| `mullvadSignedOut` | Mullvad 방식인데 로그인하지 않음 |
 | `relayList` | Mullvad 서버 목록을 받지 못함 |
 | `noRelay` | 고른 위치에 활성 서버가 없음 |
 | `tunnel` | 터널을 세우지 못함(서버 주소, 키, UDP 소켓) |
 | `handshake` | 서버가 핸드셰이크에 답하지 않음 |
+| `connectionLost` | 실행 중 터널이 끊김 |
+
+연결 설정 명령(로그인, 가져오기, 위치)의 실패는 따로 `SettingsChangeError` 코드로 보낸다: `settings`, `credentialStore`, `network`, `invalidAccount`, `tooManyDevices`, `mullvad`, `unreadableFile`, `invalidConfig {key, missing}`, `unknownLocation`.
+
+- 라우트가 다시 열릴 때마다 화면의 `routeCount()`가 늘고, 그 사이 실패했거나 끊긴 썸네일과 뷰어 미디어를 다시 요청한다.
 
 ### 6.5 타임아웃
 
@@ -225,7 +237,7 @@ Svelte 화면 → search.svelte.ts → invoke("search_next", {id})
 
 - **DNS도 터널 안에서 푼다.** SOCKS5에 도메인 이름째로 넘기고(`socks5h`), 설정의 `DNS`(Mullvad는 `10.64.0.1`)로 smoltcp DNS 소켓이 조회한다.
 - **Mullvad API 호출은 직접 연결로 한다.** 터널을 세우기 위한 호출이기 때문이다.
-- **비밀 값**: WireGuard 개인 키(기기 정보 JSON 안)와 Mullvad 계정 번호는 OS 키체인에 저장한다. 서비스 이름은 `pro.tb.nyabi.Tailgate`, 항목은 `mullvad-account`, `mullvad-device`. 키체인 읽기는 macOS 접근 허용 창을 기다릴 수 있으므로 메인 스레드가 아닌 블로킹 작업 스레드에서 한다. 그동안 창은 `connecting`으로 뜬다.
+- **비밀 값**: WireGuard 개인 키(Mullvad 기기 정보 JSON 안, 가져온 `.conf` 원문)와 Mullvad 계정 번호는 OS 키체인에 저장한다. 서비스 이름은 `pro.tb.nyabi.Tailgate`, 항목은 `mullvad-account`, `mullvad-device`, `wireguard-config`. 키체인 읽기는 macOS 접근 허용 창을 기다릴 수 있으므로 메인 스레드가 아닌 블로킹 작업 스레드에서 한다. 그동안 창은 `connecting`으로 뜬다.
 - **smoltcp 난수 시드는 실행마다 OS 난수로 채운다.** TCP 초기 순서 번호와 DNS 질의 ID가 이 시드에서 나오는데, 기본값 0이면 실행할 때마다 같은 값이 반복된다(research.md 8절).
 - 터널은 IPv4만 다룬다(smoltcp 인터페이스, DNS A 레코드).
 
@@ -324,6 +336,7 @@ e621은 색이 강한 그림이 수천 장 쏟아지는 곳이다. **색은 그�
 - **Windows**: 지금은 불투명한 `window` 색. Windows 11 Mica는 실기기에서 확인한 뒤 넣는다.
 - 아이콘은 Lucide(16px, 선 굵기 1.75). 선택된 항목은 바탕을 채우고 아이콘만 focus 색으로 바꾼다.
 - 검색창은 아이콘과 단축키 표시를 갖는다. macOS는 ⌘K, Windows는 Ctrl K, 그리고 입력 중이 아닐 때 `/`로 어디서든 검색창으로 간다. 단축키는 물리 키(`KeyK`)로 판별해 Caps Lock이나 한글 입력 상태와 관계없이 동작한다. macOS의 Ctrl K는 입력창의 "줄 끝까지 지우기"이므로 가로채지 않는다.
+- **설정 화면**: 본문 패널 안의 화면(모달 아님), 폭 최대 600px, 왼쪽 정렬. macOS 시스템 설정처럼 섹션 제목 아래 묶인 목록(반경 `md`, `raised` 바탕, 얇은 구분선)으로, 행은 왼쪽 이름·값, 오른쪽 끝 작은 버튼이다. "계정" 칸(e621 로그인·로그아웃)과 "연결" 칸(상태와 "다시 연결", 방식 분할 버튼, 방식별 행: 파일·서버 / 계정·기기·만료·위치)이 있다. 위치는 정렬 메뉴와 같은 기본 `<select>`에 국가별 묶음으로 두고, 국가 이름은 시스템 언어(`Intl.DisplayNames`)로, 도시는 Mullvad 이름 그대로 보인다.
 - **연결 표시**(사이드바 아래, 누르면 설정): 직접 연결은 회색 점, 연결 중은 빈 점, 터널은 focus 색 점과 서버 이름(`VPN · jp-tyo-wg-001`), 실패는 경고 아이콘과 "VPN 연결 안 됨". 실패 원인은 마우스를 올리면 보인다. 애니메이션은 쓰지 않는다.
 - 빈 검색 화면은 제목, 사용법 한 줄, 누르면 검색어에 들어가는 예시 태그로 이뤄진다. 예시 태그는 카테고리 색을 써서 첫 화면부터 색 체계를 보여 준다.
 - 썸네일은 카드가 아니다. 테두리·그림자·둥근 모서리 없이 틈만 둔다. GIF/동영상/즐겨찾기 여부는 모서리에 작은 기호 하나로만 표시한다.
@@ -373,8 +386,8 @@ e621은 색이 강한 그림이 수천 장 쏟아지는 곳이다. **색은 그�
 | WebView2의 커스텀 프로토콜 동영상 Range 처리 | Windows에서 실측 필요. 주소 형식은 `http://media.localhost/…`. |
 | 루프백 SOCKS 포트를 다른 로컬 프로세스가 쓸 수 있음 | 127.0.0.1에만 바인드, 실행마다 임의 포트, 앱 종료 시 닫힘. 웹뷰는 쓰지 않으므로, 필요하면 reqwest 사용자 정의 커넥터로 바꿔 포트 자체를 없앨 수 있다. |
 | 터널 시작 지연 (약 3~4초, 대부분 600KB 서버 목록 받기) | 서버 목록을 디스크에 캐시하고 백그라운드에서 갱신한다(1단계 9번). 핸드셰이크 대기는 도쿄 왕복 한두 번이 더해진다. |
-| 터널 끊김·실패 시 트래픽 누출 | 킬 스위치(6.3절): 막힌 채 시작, 키체인 오류도 막힘, 핸드셰이크 뒤에만 열림, 실패 시 막힘 유지. 끊긴 연결은 타임아웃으로 끝난다(6.5절). 실행 중 끊김 감지·재연결과 라우트 전환 시 연결 끊기는 1단계 9번. |
-| 키체인 접근 거부·잠김 | `credentialStore` 실패로 막힌 채 남는다. 설정 화면에서 다시 시도할 수 있게 한다(1단계 9번). |
+| 터널 끊김·실패 시 트래픽 누출 | 킬 스위치(6.3절): 막힌 채 시작, 키체인 오류도 막힘, 핸드셰이크 뒤에만 열림, 실패 시 막힘 유지. 끊긴 연결은 타임아웃으로 끝난다(6.5절). 실행 중 끊김을 감지하면 막고 다시 연결하며, 라우트를 바꾸면 옛 연결을 모두 끊는다. |
+| 키체인 접근 거부·잠김 | `credentialStore` 실패로 막힌 채 남는다. 설정 화면의 "다시 연결"이 키체인을 다시 읽는다. |
 | Mullvad API 변경, 기기 수 제한 | Mullvad 코드는 `tunnel/mullvad.rs` 한곳. 기기 수 초과 응답은 "다른 기기를 지우세요" 안내로 처리. |
 | macOS WKWebView의 WebM 재생 여부 미확인 | MP4 변형을 먼저 쓴다. MP4 없는 WebM은 실측 후 대체 방법을 정한다. |
 | 수천 장 스크롤 시 메모리·DOM 증가 | 보이는 행만 그리는 가상 스크롤. 그리드에서는 동영상을 재생하지 않는다. |
