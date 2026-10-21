@@ -60,6 +60,11 @@ pub fn run() {
             commands::set_general_settings,
             commands::browse_settings,
             commands::set_browse_settings,
+            commands::download_settings,
+            commands::choose_download_folder,
+            commands::open_download_folder,
+            commands::download_name_example,
+            commands::set_download_name,
             commands::quit
         ])
         .on_window_event(|window, event| {
@@ -79,7 +84,7 @@ pub fn run() {
                 Arc::clone(&settings),
                 app.path().app_cache_dir()?.join("relays.json"),
             ))?);
-            app.manage(settings);
+            app.manage(Arc::clone(&settings));
             let user_agent = UserAgent::new();
             let api = Arc::new(Api::new(network.http().clone(), user_agent.clone()));
             let account = Arc::new(Account::new(Arc::clone(&api)));
@@ -90,6 +95,7 @@ pub fn run() {
             app.manage(Arc::new(download::Downloads::new(
                 network.http().clone(),
                 user_agent.clone(),
+                settings,
                 app.path().download_dir()?.join("Tailgate"),
             )));
             app.manage(Arc::new(media::Media::new(

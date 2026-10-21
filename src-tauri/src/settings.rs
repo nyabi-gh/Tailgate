@@ -21,6 +21,8 @@ pub struct SettingsFile {
     pub general: General,
     #[serde(default)]
     pub browse: Browse,
+    #[serde(default)]
+    pub downloads: DownloadSettings,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -40,6 +42,15 @@ pub struct Browse {
     pub cell_width: Option<u16>,
     /// Newest first.
     pub recent_searches: Vec<String>,
+}
+
+/// `None` follows the app's default, so a later default reaches users who never chose.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct DownloadSettings {
+    pub folder: Option<PathBuf>,
+    /// A file name rule such as `{id}_{artist}`; see `download::name`.
+    pub name: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -154,6 +165,14 @@ impl Settings {
 
     pub fn set_browse(&self, browse: Browse) -> Result<(), SettingsError> {
         self.change_section(|file| file.browse = browse)
+    }
+
+    pub fn downloads(&self) -> DownloadSettings {
+        self.section(|file| file.downloads.clone())
+    }
+
+    pub fn set_downloads(&self, downloads: DownloadSettings) -> Result<(), SettingsError> {
+        self.change_section(|file| file.downloads = downloads)
     }
 
     /// The defaults while nothing is saved or the file cannot be loaded.
@@ -315,8 +334,13 @@ mod tests {
             cell_width: Some(240),
             recent_searches: vec!["wolf rating:s".into(), "fox".into()],
         };
+        let downloads = DownloadSettings {
+            folder: Some(PathBuf::from("/tmp/elsewhere")),
+            name: Some("{md5}".into()),
+        };
         settings.set_general(general.clone()).unwrap();
         settings.set_browse(browse.clone()).unwrap();
+        settings.set_downloads(downloads.clone()).unwrap();
         settings
             .set_connection(ConnectionSettings::new(ConnectionMode::Direct))
             .unwrap();
@@ -324,6 +348,7 @@ mod tests {
         let loaded = Settings::load(path);
         assert_eq!(loaded.general(), general);
         assert_eq!(loaded.browse(), browse);
+        assert_eq!(loaded.downloads(), downloads);
         assert_eq!(
             loaded.connection().unwrap().unwrap().mode,
             ConnectionMode::Direct

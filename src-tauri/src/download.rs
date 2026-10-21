@@ -1,11 +1,22 @@
 //! Saves original files to the download folder through the app's connection.
 
-use std::path::{Path, PathBuf};
+mod name;
+
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use serde::{Deserialize, Serialize};
 use tokio::{fs, io::AsyncWriteExt};
 
-use crate::network::UserAgent;
+pub use name::TemplateError;
+use name::{DEFAULT_TEMPLATE, NameFields, NameTemplate};
+
+use crate::{
+    network::{SettingsChangeError, UserAgent},
+    settings::{Settings, SettingsError},
+};
 
 const ORIGIN: &str = "https://static1.e621.net/data/";
 /// Progress goes to the UI at most once per this many bytes, plus once at the end.
@@ -30,7 +41,21 @@ pub struct DownloadRequest {
     pub id: u64,
     pub url: String,
     pub ext: String,
+    pub md5: String,
+    pub rating: String,
     pub artists: Vec<String>,
+    pub copyrights: Vec<String>,
+    pub characters: Vec<String>,
+}
+
+/// What the settings screen shows.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadDetails {
+    pub folder: PathBuf,
+    pub name: String,
+    /// The name an example post would get; `None` if the saved rule no longer parses.
+    pub example: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -53,32 +78,98 @@ pub enum DownloadError {
     Storage,
 }
 
+/// Why a file name rule was not saved. The UI words it.
+#[derive(Clone, Debug, PartialEq, Serialize, thiserror::Error)]
+#[serde(untagged)]
+pub enum NameRuleError {
+    #[error(transparent)]
+    Rule(TemplateError),
+    #[error(transparent)]
+    Settings(SettingsChangeError),
+}
+
 pub struct Downloads {
     http: reqwest::Client,
     user_agent: UserAgent,
-    folder: PathBuf,
+    /// The folder and name rule are read for every download, so a change applies at once.
+    settings: Arc<Settings>,
+    default_folder: PathBuf,
     /// Only files under this prefix are fetched: the URL comes from the webview.
     origin: String,
 }
 
 impl Downloads {
     /// `http` should be the app's e621 client, so downloads take the same route and kill switch.
-    pub fn new(http: reqwest::Client, user_agent: UserAgent, folder: PathBuf) -> Self {
-        Self::with_origin(http, user_agent, folder, ORIGIN.to_owned())
+    pub fn new(
+        http: reqwest::Client,
+        user_agent: UserAgent,
+        settings: Arc<Settings>,
+        default_folder: PathBuf,
+    ) -> Self {
+        Self::with_origin(
+            http,
+            user_agent,
+            settings,
+            default_folder,
+            ORIGIN.to_owned(),
+        )
     }
 
     fn with_origin(
         http: reqwest::Client,
         user_agent: UserAgent,
-        folder: PathBuf,
+        settings: Arc<Settings>,
+        default_folder: PathBuf,
         origin: String,
     ) -> Self {
         Self {
             http,
             user_agent,
-            folder,
+            settings,
+            default_folder,
             origin,
         }
+    }
+
+    pub fn folder(&self) -> PathBuf {
+        self.settings
+            .downloads()
+            .folder
+            .unwrap_or_else(|| self.default_folder.clone())
+    }
+
+    fn name_rule(&self) -> String {
+        self.settings
+            .downloads()
+            .name
+            .unwrap_or_else(|| DEFAULT_TEMPLATE.to_owned())
+    }
+
+    pub fn details(&self) -> DownloadDetails {
+        let name = self.name_rule();
+        DownloadDetails {
+            folder: self.folder(),
+            example: example_name(&name).ok(),
+            name,
+        }
+    }
+
+    pub fn set_folder(&self, folder: PathBuf) -> Result<(), SettingsChangeError> {
+        let mut downloads = self.settings.downloads();
+        downloads.folder = Some(folder);
+        self.settings
+            .set_downloads(downloads)
+            .map_err(settings_error)
+    }
+
+    /// Checked first, so a saved rule always parses unless the file was edited by hand.
+    pub fn set_name_rule(&self, name: &str) -> Result<(), NameRuleError> {
+        NameTemplate::parse(name).map_err(NameRuleError::Rule)?;
+        let mut downloads = self.settings.downloads();
+        downloads.name = Some(name.to_owned());
+        self.settings
+            .set_downloads(downloads)
+            .map_err(|error| NameRuleError::Settings(settings_error(error)))
     }
 
     /// Writes to `<name>.part` and renames it once complete, so a failed download never leaves
@@ -91,13 +182,16 @@ impl Downloads {
         if !request.url.starts_with(&self.origin) || request.url.contains("..") {
             return Err(DownloadError::NotMedia);
         }
-        let target = self.folder.join(file_name(request));
+        let folder = self.folder();
+        let template = NameTemplate::parse(&self.name_rule()).unwrap_or_else(|error| {
+            tracing::warn!("the saved file name rule is unusable ({error}); using the default");
+            NameTemplate::default()
+        });
+        let target = folder.join(file_name(request, &template));
         if fs::try_exists(&target).await.unwrap_or(false) {
             return Ok(Saved::AlreadySaved { path: target });
         }
-        fs::create_dir_all(&self.folder)
-            .await
-            .map_err(storage_error)?;
+        fs::create_dir_all(&folder).await.map_err(storage_error)?;
         let part = target.with_file_name(format!(
             "{}.part",
             target
@@ -161,29 +255,32 @@ impl Downloads {
     }
 }
 
-/// `{id}_{artist}.{ext}`, with the first artist tag that names a person, or `{id}.{ext}`.
-/// Characters a file name may not hold on Windows or macOS become `_`.
-fn file_name(request: &DownloadRequest) -> String {
-    let artist = request
-        .artists
-        .iter()
-        .find(|artist| !NOT_ARTISTS.contains(&artist.as_str()));
-    let stem = match artist {
-        Some(artist) => format!("{}_{}", request.id, artist),
-        None => request.id.to_string(),
+/// The rule's name plus the extension. The artist is the first artist tag that names a person.
+fn file_name(request: &DownloadRequest, template: &NameTemplate) -> String {
+    let fields = NameFields {
+        id: request.id,
+        md5: &request.md5,
+        artist: request
+            .artists
+            .iter()
+            .find(|artist| !NOT_ARTISTS.contains(&artist.as_str()))
+            .map(String::as_str),
+        copyright: request.copyrights.first().map(String::as_str),
+        character: request.characters.first().map(String::as_str),
+        rating: &request.rating,
     };
-    let clean = |text: &str| -> String {
-        text.chars()
-            .map(|c| {
-                if c.is_alphanumeric() || "-_.()".contains(c) {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect()
-    };
-    format!("{}.{}", clean(&stem), clean(&request.ext))
+    format!("{}.{}", template.stem(&fields), name::clean(&request.ext))
+}
+
+/// What the rule would name an example post, for the settings screen.
+pub fn example_name(rule: &str) -> Result<String, TemplateError> {
+    let template = NameTemplate::parse(rule)?;
+    Ok(format!("{}.png", template.stem(&name::EXAMPLE)))
+}
+
+fn settings_error(error: SettingsError) -> SettingsChangeError {
+    tracing::error!("{error}");
+    SettingsChangeError::Settings
 }
 
 fn storage_error(error: std::io::Error) -> DownloadError {
@@ -210,7 +307,10 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::*;
-    use crate::api::testing::{Received, json_response, serve};
+    use crate::{
+        api::testing::{Received, json_response, serve},
+        settings::testing::TempDir,
+    };
 
     struct Folder(PathBuf);
 
@@ -237,48 +337,110 @@ mod tests {
             id: 42,
             url: url.to_owned(),
             ext: "png".into(),
+            md5: "0123456789abcdef0123456789abcdef".into(),
+            rating: "s".into(),
             artists: artists.iter().map(|artist| (*artist).to_owned()).collect(),
+            copyrights: vec!["pokemon".into()],
+            characters: Vec::new(),
         }
     }
 
     /// A local stand-in for static1; the returned origin replaces `https://static1.e621.net/data/`.
+    /// The settings live in `settings`, which must outlive the downloads.
     async fn fake_static1(
         folder: &Folder,
+        settings: &TempDir,
         responses: Vec<String>,
     ) -> (Downloads, String, mpsc::UnboundedReceiver<Received>) {
         let (base, received) = serve(responses).await;
         let origin = format!("{base}data/");
         let http = reqwest::Client::builder().no_proxy().build().unwrap();
         (
-            Downloads::with_origin(http, UserAgent::new(), folder.0.clone(), origin.clone()),
+            Downloads::with_origin(
+                http,
+                UserAgent::new(),
+                Arc::new(Settings::load(settings.join("settings.json"))),
+                folder.0.clone(),
+                origin.clone(),
+            ),
             origin,
             received,
         )
     }
 
     #[test]
-    fn names_files_after_the_post_and_its_artist() {
+    fn names_files_after_the_post_and_its_artist_by_default() {
         let url = "https://static1.e621.net/data/aa/bb/x.png";
+        let name = |artists: &[&str]| file_name(&request(url, artists), &NameTemplate::default());
+        assert_eq!(name(&["conditional_dnp", "foo_bar"]), "42_foo_bar.png");
+        assert_eq!(name(&["sound_warning"]), "42.png");
+        assert_eq!(name(&[]), "42.png");
+        assert_eq!(name(&["a/b:c?"]), "42_a_b_c_.png");
+    }
+
+    #[tokio::test]
+    async fn follows_the_saved_folder_and_name_rule() {
+        let folder = Folder::new();
+        let elsewhere = Folder::new();
+        let settings = TempDir::new();
+        let (downloads, origin, _received) = fake_static1(
+            &folder,
+            &settings,
+            vec![json_response("200 OK", "x"), json_response("200 OK", "y")],
+        )
+        .await;
+        downloads.set_folder(elsewhere.0.clone()).unwrap();
+        downloads.set_name_rule("{copyright}-{md5}").unwrap();
+        let url = format!("{origin}aa/bb/x.png");
+        let saved = downloads
+            .save(&request(&url, &["foo"]), |_, _| {})
+            .await
+            .unwrap();
+        let path = elsewhere
+            .0
+            .join("pokemon-0123456789abcdef0123456789abcdef.png");
+        assert_eq!(saved, Saved::Saved { path: path.clone() });
+        assert!(path.exists());
+        assert!(!folder.0.exists());
         assert_eq!(
-            file_name(&request(url, &["conditional_dnp", "foo_bar"])),
-            "42_foo_bar.png"
+            downloads.details(),
+            DownloadDetails {
+                folder: elsewhere.0.clone(),
+                name: "{copyright}-{md5}".into(),
+                example: Some("original-9d3a5d7e8b6c4f21a0e1b2c3d4e5f607.png".into()),
+            }
         );
-        assert_eq!(file_name(&request(url, &["sound_warning"])), "42.png");
-        assert_eq!(file_name(&request(url, &[])), "42.png");
-        assert_eq!(file_name(&request(url, &["a/b:c?"])), "42_a_b_c_.png");
+    }
+
+    #[tokio::test]
+    async fn keeps_the_rule_when_a_new_one_could_repeat_names() {
+        let folder = Folder::new();
+        let settings = TempDir::new();
+        let (downloads, _, _received) = fake_static1(&folder, &settings, Vec::new()).await;
+        assert_eq!(
+            downloads.set_name_rule("{artist}"),
+            Err(NameRuleError::Rule(TemplateError::NotUnique))
+        );
+        assert_eq!(downloads.details().name, "{id}_{artist}");
+        assert_eq!(
+            downloads.details().example.as_deref(),
+            Some("4512873_artist_name.png")
+        );
+        assert!(!settings.join("settings.json").exists());
     }
 
     #[tokio::test]
     async fn refuses_urls_outside_static1() {
         let folder = Folder::new();
-        let (downloads, _, _received) = fake_static1(&folder, Vec::new()).await;
+        let settings = TempDir::new();
+        let (downloads, _, _received) = fake_static1(&folder, &settings, Vec::new()).await;
         assert_eq!(
             downloads
                 .save(&request("https://example.com/x.png", &[]), |_, _| {})
                 .await,
             Err(DownloadError::NotMedia)
         );
-        let (downloads, origin, _received) = fake_static1(&folder, Vec::new()).await;
+        let (downloads, origin, _received) = fake_static1(&folder, &settings, Vec::new()).await;
         assert_eq!(
             downloads
                 .save(&request(&format!("{origin}../x.png"), &[]), |_, _| {})
@@ -290,9 +452,10 @@ mod tests {
     #[tokio::test]
     async fn saves_through_a_part_file_and_reports_progress() {
         let folder = Folder::new();
+        let settings = TempDir::new();
         let body = "x".repeat(600 * 1024);
         let (downloads, origin, mut received) =
-            fake_static1(&folder, vec![json_response("200 OK", &body)]).await;
+            fake_static1(&folder, &settings, vec![json_response("200 OK", &body)]).await;
         let url = format!("{origin}aa/bb/x.png");
         let reports = Mutex::new(Vec::new());
         let saved = downloads
@@ -317,9 +480,10 @@ mod tests {
     #[tokio::test]
     async fn keeps_an_existing_file() {
         let folder = Folder::new();
+        let settings = TempDir::new();
         std::fs::create_dir_all(&folder.0).unwrap();
         std::fs::write(folder.0.join("42.png"), "old").unwrap();
-        let (downloads, origin, _received) = fake_static1(&folder, Vec::new()).await;
+        let (downloads, origin, _received) = fake_static1(&folder, &settings, Vec::new()).await;
         let saved = downloads
             .save(&request(&format!("{origin}aa/bb/x.png"), &[]), |_, _| {})
             .await
@@ -339,8 +503,13 @@ mod tests {
     #[tokio::test]
     async fn leaves_nothing_behind_when_the_server_refuses() {
         let folder = Folder::new();
-        let (downloads, origin, _received) =
-            fake_static1(&folder, vec![json_response("403 Forbidden", "{}")]).await;
+        let settings = TempDir::new();
+        let (downloads, origin, _received) = fake_static1(
+            &folder,
+            &settings,
+            vec![json_response("403 Forbidden", "{}")],
+        )
+        .await;
         let url = format!("{origin}aa/bb/x.png");
         assert_eq!(
             downloads.save(&request(&url, &[]), |_, _| {}).await,

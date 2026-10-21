@@ -91,7 +91,16 @@ export async function download(post: Post) {
   progress[post.id] = { received: 0, total: post.file.size };
   try {
     const saved = await invoke<Saved>("download", {
-      request: { id: post.id, url, ext: post.file.ext, artists: post.tags.artist },
+      request: {
+        id: post.id,
+        url,
+        ext: post.file.ext,
+        md5: post.file.md5,
+        rating: post.rating,
+        artists: post.tags.artist,
+        copyrights: post.tags.copyright,
+        characters: post.tags.character,
+      },
     });
     const name = saved.path.split(/[\\/]/).pop() ?? saved.path;
     const text = saved.state === "saved" ? m().actions.saved(name) : m().actions.alreadySaved(name);

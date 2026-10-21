@@ -11,7 +11,10 @@ use crate::{
         Api, ApiError,
         models::{Favorited, TagSuggestion, Voted},
     },
-    download::{DownloadError, DownloadRequest, Downloads, Saved},
+    download::{
+        DownloadDetails, DownloadError, DownloadRequest, Downloads, NameRuleError, Saved,
+        TemplateError, example_name,
+    },
     network::{Connection, ConnectionDetails, Network, SettingsChangeError},
     relays::LocationChoice,
     search::{SearchError, SearchPage, Searches},
@@ -198,6 +201,70 @@ pub async fn download(
             }
         })
         .await
+}
+
+#[tauri::command]
+pub fn download_settings(downloads: State<'_, Arc<Downloads>>) -> DownloadDetails {
+    downloads.details()
+}
+
+/// Resolves to `false` when the user cancels the folder dialog.
+#[tauri::command]
+pub async fn choose_download_folder(
+    app: AppHandle,
+    downloads: State<'_, Arc<Downloads>>,
+) -> Result<bool, SettingsChangeError> {
+    use tauri_plugin_dialog::DialogExt;
+    let (picked, chosen) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_directory(downloads.folder())
+        .pick_folder(move |path| {
+            // The receiver only goes away if the command was dropped; nobody waits then.
+            let _ = picked.send(path);
+        });
+    let Some(path) = chosen.await.ok().flatten() else {
+        return Ok(false);
+    };
+    let path = path.into_path().map_err(|error| {
+        tracing::warn!("the picked folder has no path: {error}");
+        SettingsChangeError::UnreadableFile
+    })?;
+    downloads.set_folder(path)?;
+    Ok(true)
+}
+
+/// Created first: the default folder only exists once something has been saved to it.
+#[tauri::command]
+pub async fn open_download_folder(
+    app: AppHandle,
+    downloads: State<'_, Arc<Downloads>>,
+) -> Result<(), DownloadError> {
+    use tauri_plugin_opener::OpenerExt;
+    let folder = downloads.folder();
+    tokio::fs::create_dir_all(&folder).await.map_err(|error| {
+        tracing::warn!("could not create {}: {error}", folder.display());
+        DownloadError::Storage
+    })?;
+    app.opener()
+        .open_path(folder.to_string_lossy(), None::<&str>)
+        .map_err(|error| {
+            tracing::warn!("could not open {}: {error}", folder.display());
+            DownloadError::Storage
+        })
+}
+
+#[tauri::command]
+pub fn download_name_example(name: String) -> Result<String, TemplateError> {
+    example_name(&name)
+}
+
+#[tauri::command]
+pub fn set_download_name(
+    downloads: State<'_, Arc<Downloads>>,
+    name: String,
+) -> Result<(), NameRuleError> {
+    downloads.set_name_rule(&name)
 }
 
 #[tauri::command]
