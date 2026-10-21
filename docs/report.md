@@ -93,11 +93,11 @@ tailgate/
         client.rs        e621 요청, UA, Basic 인증, 스로틀, 재시도
         models.rs        e621 원본 응답(serde) → 앱 모델 정규화
         endpoints.rs     posts, users/me, autocomplete, PostSearch(페이지 넘김) … (favorites, votes는 8번)
-      search.rs          열린 검색(PostSearch)들, 검색어 태그의 카테고리를 결과에서 찾기
+      search.rs          화면마다 하나씩 열린 검색(태그 검색, 내 즐겨찾기), 검색어 태그의 카테고리를 결과에서 찾기
       blacklist.rs       파서 + 평가기 (e621ng의 블랙리스트 코드를 옮김)
       account.rs         API 키 저장/삭제(키체인 `e621-account`), 로그인·로그아웃, 시작 시 복원·확인, 401 처리, 계정 상태(watch)
       settings.rs        설정 JSON (앱 설정 디렉터리)
-      download.rs        원본 다운로드, 파일명 규칙
+      download.rs        원본 다운로드(`.part`로 받아 이름 바꾸기, 진행률 이벤트), 파일명 `{id}_{artist}.{ext}`, 기본 폴더 `~/Downloads/Tailgate`(설정은 10번)
     examples/
       tunnel_probe.rs    실제 Mullvad 서버로 터널을 검증하는 수동 점검 도구
       api_probe.rs       앱과 같은 경로로 실제 e621 API를 불러 응답 구조를 확인하는 수동 점검 도구
@@ -120,7 +120,7 @@ tailgate/
       keys.ts            키보드 단축키
     state/               검색, 계정, 설정 상태 (Svelte runes 모듈)
     views/               Search, Viewer, Favorites, Settings, Login
-    components/          Sidebar, EmptySearch, TagInput, SortMenu, Grid, Thumb, Viewer, MediaStage, InfoPanel, SignInSheet …
+    components/          Sidebar, EmptySearch, TagInput, SortMenu, Grid, Thumb, Viewer, MediaStage, InfoPanel, SignInSheet, Toasts …
     styles/app.css       Tailwind 진입점, 디자인 토큰(CSS 변수 + @theme), 기본 스타일
 ```
 
