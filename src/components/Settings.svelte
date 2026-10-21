@@ -27,6 +27,15 @@
     type NameRuleError,
   } from "../lib/downloadSettings";
   import { settingsChangeMessage } from "../lib/errors";
+  import {
+    CACHE_LIMITS_MB,
+    cacheUsage,
+    clearCache,
+    formatBytes,
+    megabytes,
+    setCacheLimit,
+    type CacheUsage,
+  } from "../lib/storage";
   import { currentLocale, m, type Language } from "../lib/i18n/index.svelte";
   import { CELL_WIDTH } from "../lib/layout";
   import {
@@ -56,6 +65,9 @@
   let nameDraft = $state("");
   let nameCheck = $state<{ example: string } | { error: NameRuleError } | null>(null);
   let downloadsError = $state<string | null>(null);
+  let cache = $state<CacheUsage | null>(null);
+  let cacheBusy = $state(false);
+  let cacheError = $state<string | null>(null);
   let mullvadSheet: MullvadSignInSheet;
 
   const status = $derived(connection());
@@ -97,6 +109,37 @@
 
   async function setLanguage(language: Language) {
     generalError = await changeGeneralSettings({ language });
+  }
+
+  cacheUsage().then((usage) => (cache = usage));
+
+  /** A limit kept from elsewhere than this list still shows as chosen. */
+  const cacheLimits = $derived(
+    cache === null || CACHE_LIMITS_MB.includes(megabytes(cache.limit))
+      ? CACHE_LIMITS_MB
+      : [...CACHE_LIMITS_MB, megabytes(cache.limit)].sort((a, b) => a - b),
+  );
+
+  async function clearImages() {
+    cacheBusy = true;
+    cacheError = null;
+    const outcome = await clearCache();
+    if (outcome === "failed") {
+      cacheError = m().settings.storage.clearFailed;
+      cache = await cacheUsage();
+    } else {
+      cache = outcome;
+    }
+    cacheBusy = false;
+  }
+
+  async function changeCacheLimit(limitMb: number) {
+    cacheBusy = true;
+    cacheError = null;
+    const outcome = await setCacheLimit(limitMb);
+    if ("code" in outcome) cacheError = settingsChangeMessage(outcome);
+    else cache = outcome;
+    cacheBusy = false;
   }
 
   async function refreshDownloads() {
@@ -436,6 +479,46 @@
         <CircleAlert size={16} strokeWidth={1.75} class="mt-px shrink-0" />{downloadsError}
       </p>
     {/if}
+  </section>
+
+  <section class="flex flex-col gap-2">
+    <h2 class="px-1 font-strong">{m().settings.storage.title}</h2>
+    <div class={group}>
+      <div class={row}>
+        <span class={label}>{m().settings.storage.images}</span>
+        {#if cache}
+          <span class="truncate text-dim">{m().settings.storage.used(formatBytes(cache.used, currentLocale()))}</span>
+        {/if}
+        <button class={action} disabled={cacheBusy || cache?.used === 0} onclick={clearImages}>
+          {m().settings.storage.clear}
+        </button>
+      </div>
+      <div class={row}>
+        <span class={label}>{m().settings.storage.limit}</span>
+        {#if cache}
+          <label class="relative -ml-3 flex h-8 items-center rounded-md transition-colors hover:bg-hover">
+            <span class="sr-only">{m().settings.storage.limit}</span>
+            <select
+              class="h-full appearance-none bg-transparent pr-7 pl-3 outline-none"
+              value={megabytes(cache.limit)}
+              disabled={cacheBusy}
+              onchange={(event) => changeCacheLimit(Number(event.currentTarget.value))}
+            >
+              {#each cacheLimits as limit (limit)}
+                <option value={limit}>{formatBytes(limit * 1024 * 1024, currentLocale())}</option>
+              {/each}
+            </select>
+            <ChevronDown size={14} strokeWidth={2} class="pointer-events-none absolute right-2.5 text-dim" />
+          </label>
+        {/if}
+      </div>
+    </div>
+    {#if cacheError}
+      <p class="flex items-start gap-2 px-1" role="alert">
+        <CircleAlert size={16} strokeWidth={1.75} class="mt-px shrink-0" />{cacheError}
+      </p>
+    {/if}
+    <p class="px-1 text-dim">{m().settings.storage.note}</p>
   </section>
 </div>
 

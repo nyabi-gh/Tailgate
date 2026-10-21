@@ -43,6 +43,15 @@ const en = {
     recentSearches: "Recent searches",
     recentCount: (count: number) => (count === 0 ? "None" : count === 1 ? "1 search" : `${count} searches`),
     clearRecent: "Clear",
+    storage: {
+      title: "Storage",
+      images: "Image cache",
+      used: (size: string) => `${size} used`,
+      clear: "Clear",
+      clearFailed: "Some images could not be removed.",
+      limit: "Up to",
+      note: "Images you have seen are kept, so they load at once after the app restarts. Videos are not kept.",
+    },
     downloads: {
       title: "Downloads",
       folder: "Folder",

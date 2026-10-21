@@ -45,6 +45,15 @@ const ko: Messages = {
     recentSearches: "최근 검색어",
     recentCount: (count) => (count === 0 ? "없음" : `${count}개`),
     clearRecent: "지우기",
+    storage: {
+      title: "저장 공간",
+      images: "이미지 캐시",
+      used: (size) => `${size} 사용 중`,
+      clear: "비우기",
+      clearFailed: "일부 이미지를 지우지 못했습니다.",
+      limit: "최대 크기",
+      note: "본 이미지를 저장해 두어 앱을 다시 켜도 바로 뜹니다. 동영상은 저장하지 않습니다.",
+    },
     downloads: {
       title: "다운로드",
       folder: "폴더",
