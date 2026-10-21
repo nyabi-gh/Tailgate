@@ -4,12 +4,13 @@
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::{Arc, RwLock},
+    sync::Arc,
 };
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt, copy_bidirectional},
     net::{TcpListener, TcpStream},
+    sync::watch,
     task::JoinHandle,
 };
 
@@ -26,7 +27,7 @@ pub enum Route {
 
 pub struct SocksServer {
     address: SocketAddr,
-    route: Arc<RwLock<Route>>,
+    route: watch::Sender<Route>,
     acceptor: JoinHandle<()>,
 }
 
@@ -34,8 +35,8 @@ impl SocksServer {
     pub async fn bind(route: Route) -> io::Result<Self> {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
         let address = listener.local_addr()?;
-        let route = Arc::new(RwLock::new(route));
-        let acceptor = tokio::spawn(accept_loop(listener, Arc::clone(&route)));
+        let route = watch::Sender::new(route);
+        let acceptor = tokio::spawn(accept_loop(listener, route.subscribe()));
         Ok(Self {
             address,
             route,
@@ -47,10 +48,11 @@ impl SocksServer {
         self.address
     }
 
-    /// Applies to connections accepted from now on; relayed connections keep the route they
-    /// started with (docs/report.md §6.3).
+    /// Also closes every connection opened on the previous route, relayed or still connecting.
+    /// Otherwise a pooled HTTP connection would keep carrying traffic the old way
+    /// (docs/report.md §6.3, rule 4).
     pub fn set_route(&self, route: Route) {
-        *self.route.write().expect("route lock poisoned") = route;
+        self.route.send_replace(route);
     }
 }
 
@@ -60,7 +62,7 @@ impl Drop for SocksServer {
     }
 }
 
-async fn accept_loop(listener: TcpListener, route: Arc<RwLock<Route>>) {
+async fn accept_loop(listener: TcpListener, routes: watch::Receiver<Route>) {
     loop {
         let client = match listener.accept().await {
             Ok((client, _)) => client,
@@ -70,10 +72,17 @@ async fn accept_loop(listener: TcpListener, route: Arc<RwLock<Route>>) {
                 continue;
             }
         };
-        let route = route.read().expect("route lock poisoned").clone();
+        // Taking the route marks it seen, so any later change ends this connection.
+        let mut changes = routes.clone();
+        let route = changes.borrow_and_update().clone();
         tokio::spawn(async move {
-            if let Err(error) = serve(client, route).await {
-                tracing::debug!("SOCKS connection ended: {error}");
+            tokio::select! {
+                result = serve(client, route) => {
+                    if let Err(error) = result {
+                        tracing::debug!("SOCKS connection ended: {error}");
+                    }
+                }
+                _ = changes.changed() => tracing::debug!("SOCKS connection closed: the route changed"),
             }
         });
     }
@@ -189,4 +198,80 @@ async fn reply(client: &mut TcpStream, code: Reply) -> io::Result<()> {
     client
         .write_all(&[VERSION, code as u8, 0, 1, 0, 0, 0, 0, 0, 0])
         .await
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    /// A local server that answers every connection with `hello` and then keeps it open.
+    async fn holding_server() -> SocketAddr {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let mut open = Vec::new();
+            loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                stream.write_all(b"hello").await.unwrap();
+                open.push(stream);
+            }
+        });
+        address
+    }
+
+    /// Opens a CONNECT through the proxy and returns the stream with the reply code.
+    async fn socks_connect(proxy: SocketAddr, target: SocketAddr) -> (TcpStream, u8) {
+        let mut stream = TcpStream::connect(proxy).await.unwrap();
+        stream.write_all(&[VERSION, 1, NO_AUTH]).await.unwrap();
+        let mut method = [0u8; 2];
+        stream.read_exact(&mut method).await.unwrap();
+        let SocketAddr::V4(target) = target else {
+            unreachable!("the test server is IPv4")
+        };
+        let mut request = vec![VERSION, CONNECT, 0, 1];
+        request.extend_from_slice(&target.ip().octets());
+        request.extend_from_slice(&target.port().to_be_bytes());
+        stream.write_all(&request).await.unwrap();
+        let mut reply = [0u8; 10];
+        stream.read_exact(&mut reply).await.unwrap();
+        (stream, reply[1])
+    }
+
+    #[tokio::test]
+    async fn changing_the_route_closes_relayed_connections() {
+        let target = holding_server().await;
+        let socks = SocksServer::bind(Route::Direct).await.unwrap();
+        let (mut stream, code) = socks_connect(socks.address(), target).await;
+        assert_eq!(code, Reply::Succeeded as u8);
+        let mut greeting = [0u8; 5];
+        stream.read_exact(&mut greeting).await.unwrap();
+        assert_eq!(&greeting, b"hello");
+
+        socks.set_route(Route::Blocked);
+        let mut rest = Vec::new();
+        let read = tokio::time::timeout(Duration::from_secs(5), stream.read_to_end(&mut rest))
+            .await
+            .expect("the relayed connection stayed open");
+        assert!(read.is_err() || rest.is_empty());
+
+        let (_, code) = socks_connect(socks.address(), target).await;
+        assert_eq!(code, Reply::NotAllowed as u8);
+    }
+
+    #[tokio::test]
+    async fn connections_on_the_current_route_stay_open() {
+        let target = holding_server().await;
+        let socks = SocksServer::bind(Route::Blocked).await.unwrap();
+        socks.set_route(Route::Direct);
+        let (mut stream, code) = socks_connect(socks.address(), target).await;
+        assert_eq!(code, Reply::Succeeded as u8);
+        let mut greeting = [0u8; 5];
+        stream.read_exact(&mut greeting).await.unwrap();
+        let mut more = [0u8; 1];
+        let still_open =
+            tokio::time::timeout(Duration::from_millis(300), stream.read(&mut more)).await;
+        assert!(still_open.is_err(), "the connection was closed");
+    }
 }
