@@ -12,7 +12,7 @@
 
 터널 직후 첫 요청이 가끔 `TtlExpired`로 실패하던 원인을 재현으로 확인했다(2026-10-21, research.md 7절): 같은 Mullvad 기기 키로 터널이 둘 떠 있으면 먼저 연결한 쪽이 응답을 받지 못한다. 앱을 한 번에 하나만 실행되게 하고, WireGuard 파일 칸에 안내를 넣었다. 조사 중 `jp-tyo-wg-002`가 핸드셰이크에 전혀 답하지 않는 것도 찾아, 답하지 않은 서버는 실행 중 후보에서 빼고 바로 다른 서버로 다시 시도하게 했다.
 
-10번은 네 단계로 나눴다(report.md 12절). 10-1(설정 파일의 일반 칸, 언어 선택, 18세 확인)과 10-2(칸 폭 기억, 최근 검색어, 블랙리스트 다시 받기)를 구현했다.
+10번은 네 단계로 나눴다(report.md 12절). 10-1(설정 파일의 일반 칸, 언어 선택, 18세 확인)과 10-2(칸 폭 기억, 최근 검색어, 블랙리스트 다시 받기), 10-3(다운로드 폴더·파일 이름 규칙)을 구현했다.
 
 ## 구현 현황
 
@@ -22,7 +22,7 @@
 | 단일 실행 | `lib.rs` | `tauri-plugin-single-instance`. 두 번째 실행은 터널을 열기 전에 끝나고 떠 있는 창을 앞으로(report.md 6.6절) |
 | 18세 확인·언어 | `Root.svelte`, `AgeCheck.svelte`, `settings.svelte.ts`, `settings.rs`, `main.ts` | 일반 칸을 읽은 뒤 화면을 그림. 확인 전에는 앱 화면 대신 확인 화면(18세 이상입니다 / 종료), 언어는 시스템·English·한국어. 손상된 설정 파일은 일반 칸 저장이 덮어쓰지 않음 |
 | 연결 표시 | `Sidebar.svelte`, `ConnectionStatus.svelte`, `connection.svelte.ts` | 직접 / 연결 중 / `VPN · 서버` / 실패(원인은 마우스를 올리면). 설정 화면과 같은 표시 |
-| 설정 화면 | `Settings.svelte`, `MullvadSignInSheet.svelte`, `settings.rs` | 일반 칸(언어), 보기 칸(썸네일 크기, 최근 검색어 수·지우기), 계정 칸(e621 로그인·로그아웃), 연결 칸(상태·다시 연결, 방식 분할 버튼, WireGuard 파일·서버, Mullvad 기기·만료·위치, 로그인 시트). WireGuard 방식일 때 같은 파일을 다른 앱에서 동시에 쓰지 말라는 안내. 설정은 `~/Library/Application Support/pro.tb.nyabi.Tailgate/settings.json`. 나머지 설정 항목은 10-3~10-4 |
+| 설정 화면 | `Settings.svelte`, `MullvadSignInSheet.svelte`, `settings.rs` | 일반 칸(언어), 보기 칸(썸네일 크기, 최근 검색어 수·지우기), 다운로드 칸(폴더 열기·선택, 파일 이름 규칙과 예시·오류), 계정 칸(e621 로그인·로그아웃), 연결 칸(상태·다시 연결, 방식 분할 버튼, WireGuard 파일·서버, Mullvad 기기·만료·위치, 로그인 시트). WireGuard 방식일 때 같은 파일을 다른 앱에서 동시에 쓰지 말라는 안내. 설정은 `~/Library/Application Support/pro.tb.nyabi.Tailgate/settings.json`. 나머지 설정 항목은 10-4 |
 | 키체인 | `secrets.rs` | 완료 |
 | `.conf` 가져오기 | `tunnel/config.rs`, `network.rs`, `commands.rs` | Rust가 파일 대화상자를 열고 읽어 키체인 `wireguard-config`에 저장 |
 | Mullvad | `tunnel/mullvad.rs`, `relays.rs`, `network.rs` | 토큰, 기기 등록·삭제, 만료일, 서버 목록(ETag, `~/Library/Caches/pro.tb.nyabi.Tailgate/relays.json`, 약 90KB), 도시별 위치 목록, 도시 안에서 무작위 서버(핸드셰이크에 답하지 않은 서버는 실행 중 빼고 바로 다른 서버로 한 번 더). 로그인·로그아웃 |
@@ -37,8 +37,8 @@
 | 검색 | `search.rs`, `search.svelte.ts`, `layout.ts`, `tags.ts`, `TagInput`, `SortMenu`, `Grid`, `Thumb` | 앱을 켜면 태그 없는 검색(최신 게시물)으로 시작, 태그를 모두 지우고 검색해도 같음(2026-10-21, 빈 검색 화면 대신), 태그 칩(카테고리 색: 자동완성과 첫 결과에서 앎, 메타태그는 meta 색, 제외는 취소선), 자동완성(3글자, 300ms, 접두어 캐시), 정렬 메뉴(`order:` 바꿈), 3:4 같은 크기 칸 격자(틈 3px, 그림은 칸을 채우게 자름. 2026-10-21 justified에서 바꿈), 가상 스크롤(±1화면), 남은 1.5화면에서 다음 페이지, ⌘/Ctrl+휠·슬라이더로 칸 폭 100~360(기본 180, 240 이상이면 `sample`, 멈춘 뒤 0.5초에 `settings.json`에 저장해 다음 실행에도 유지), 최근 검색어(태그 있는 검색만 10개, 빈 검색창에 포커스하면 목록, ↑/↓로 고르고 Enter, 아무것도 고르지 않은 Enter는 지금처럼 최신 게시물), 로딩·빈 결과·오류·다시 시도, 계정이 바뀌면 다시 검색, 썸네일을 누르면 뷰어 |
 | 블랙리스트 | `blacklist.rs`, `search.rs`, `search.svelte.ts`, `Grid`, `Thumb` | e621ng 규칙 그대로(research.md 2절). 블랙리스트는 자격 증명마다 `/users/me`로 받고(익명이면 사이트 기본 목록), 받기 전에는 게시물을 보내지 않음. 창이 포커스를 받을 때 마지막 확인에서 5분이 지났으면 다시 받고, 바뀌었으면 열린 검색이 이미 받은 게시물도 다시 판정해 `blacklist-changed`로 알림(`blacklistMarks.ts`가 세대 번호로 페이지 응답과의 도착 순서를 가림). 전부 걸린 페이지는 한 번에 최대 5페이지까지 이어 받음. 그리드 오른쪽 아래 "N개 숨김"으로 그 검색 동안 보이기, 보인 것엔 눈 가림 표시 |
 | 뷰어 | `Viewer`, `MediaStage`, `InfoPanel`, `viewer.svelte.ts`, `zoom.ts`, `media.ts` | 썸네일에서 커지며 열리고 그 자리로 닫힘(View Transitions), 이미지 샘플 → 확대하거나 요청하면 원본, GIF는 원본, 동영상 720p 우선·반복·음소거 시작, 휠·핀치 확대·끌기·더블클릭 맞춤/1:1, 이전·다음(끝 5개 전에 다음 페이지), 정보 패널(점수·즐겨찾기·등급·파일·업로더·출처·카테고리별 태그), ←/→·Esc·I·0 |
-| 즐겨찾기·투표·다운로드 | `api/`, `search.rs`, `download.rs`, `actions.svelte.ts`, `search.svelte.ts`, `InfoPanel`, `Toasts`, `App` | 뷰어 패널의 ♥·▲·▼·↓와 F·↑·↓·D(누르면 바로 반영, e621 응답으로 맞추고 실패하면 되돌림), 로그인 안 했으면 로그인 시트, 다운로드는 `~/Downloads/Tailgate/{id}_{artist}.{ext}`로 `.part`를 거쳐 저장·진행률·"Finder에서 보기", 사이드바 즐겨찾기 화면(즐겨찾기한 순서, 블랙리스트 적용). 검색과 즐겨찾기는 화면마다 따로 열려 결과와 스크롤을 기억 |
-| 10-3~10-4, 1단계 11번 | | 시작 전 |
+| 즐겨찾기·투표·다운로드 | `api/`, `search.rs`, `download.rs`, `download/name.rs`, `downloadSettings.ts`, `actions.svelte.ts`, `search.svelte.ts`, `InfoPanel`, `Toasts`, `App` | 뷰어 패널의 ♥·▲·▼·↓와 F·↑·↓·D(누르면 바로 반영, e621 응답으로 맞추고 실패하면 되돌림), 로그인 안 했으면 로그인 시트, 다운로드는 설정의 폴더(기본 `~/Downloads/Tailgate`)에 이름 규칙(기본 `{id}_{artist}`, report.md 3절)대로 `.part`를 거쳐 저장·진행률·"Finder에서 보기", 사이드바 즐겨찾기 화면(즐겨찾기한 순서, 블랙리스트 적용). 검색과 즐겨찾기는 화면마다 따로 열려 결과와 스크롤을 기억 |
+| 10-4, 1단계 11번 | | 시작 전 |
 
 ## 재검토에서 고친 것 (2026-10-19)
 
@@ -87,6 +87,7 @@
 | 10-21 | 단일 실행·서버 빼기 | `cargo test`(101: 답하지 않은 서버 빼기, 모두 빠지면 전부 다시 후보), `cargo clippy`·`fmt`, `npm run check`·`build`·`test`, 앱의 `Network`로 다시 연결 15회(임시 예제), 실제 개발 앱 | 통과. 첫 시도가 wg-002에 걸리자 실패 표시 없이 목록을 새로 받아 wg-202로 연결(14.9초), 이후 14회 wg-002를 고르지 않음. 앱이 떠 있을 때 다시 실행하면 0초 만에 종료 코드 0, 터널은 하나. SIGTERM 뒤 남은 소켓이 있어도 정상 시작. 다른 앱이 앞에 있을 때 터미널에서 다시 실행하면 창이 앞으로 오지 않음(research.md 8절) |
 | 10-21 | 10-1 일반 칸·18세 확인 | `cargo test`(103: 일반 칸 저장·다시 읽기와 연결 유지, 손상 파일을 덮어쓰지 않음, 일반 칸 없는 옛 파일), `cargo clippy`·`fmt`, `npm run check`·`build`·`test`, 실제 개발 앱(설정 파일 없음, 임시 코드로 확인·언어 변경) | 통과. 첫 실행에 한국어 확인 화면, 확인 뒤 본 화면, 영어로 바꾸면 바로 반영되고 `settings.json`에 `language: "en"`, `adult: true`(연결은 `null` 그대로). 다시 불러오면 확인 화면 없이 영어로 시작, 설정 화면 맨 위 일반 칸 표시. 확인 뒤 만든 `settings.json`은 지움 |
 | 10-21 | 10-2 칸 폭·최근 검색어·블랙리스트 다시 받기 | `cargo test`(107: 보기 칸 저장과 다른 칸 유지·손상 파일, 5분 전에는 요청 없음, 바뀐 블랙리스트로 받은 게시물과 다음 페이지 판정, 같으면 알림 없음, 첫 페이지 전에는 요청 없음), `npm test`(22: 칸 폭 범위, 블랙리스트 표시 순서 경합 5), `cargo clippy`·`fmt`, `npm run check`·`build`, 실제 개발 앱(임시 코드로 검색 두 번·칸 폭 260·검색창 포커스, 다시 켜서 설정 화면) | 통과. 빈 검색창 아래에 최근 검색어 "fox rating:s", "wolf"(최신순), 슬라이더 260, `settings.json`의 `browse`에 저장. 다시 켜면 설정 화면의 썸네일 크기 260, 최근 검색어 "2개". 확인 뒤 `settings.json`은 지움 |
+| 10-21 | 10-3 다운로드 폴더·파일 이름 규칙 | `cargo test`(114: 규칙 5 — 토큰 채우기, 값 없는 토큰과 구분자 빼기, 금지 문자, 길이 제한, 잘못된 규칙 거절 — 저장된 폴더·규칙으로 저장, 반복될 수 있는 규칙은 저장 안 함, 다운로드 칸 저장), `cargo clippy`·`fmt`, `npm run check`·`build`·`test`, 실제 개발 앱(임시 코드로 규칙을 `{copyright}-{rating}-{id}`로 바꾸고 `rating:s` 첫 게시물 다운로드, 터널) | 통과. 설정 화면에 폴더 `/Users/nyabi/Downloads/Tailgate`, 규칙, "예: original-s-4512873.png", 안내 표시. `s-6796924.png`(997KB)로 저장(작품 태그가 비어 `{copyright}-`가 빠진 것으로 보임, 태그 대조는 안 함), 알림 표시. 받은 파일과 `settings.json`은 확인 뒤 지움 |
 | 10-21 | 최신순 첫 화면 | `cargo test`(100: 빈 검색이 `tags=`와 `b<id>` 커서로 요청), `npm run check`·`build`·`test`, 실제 앱(Vite 다시 불러오기) | 통과. 앱이 최신 게시물 격자로 열리고 정렬 "최신순" 표시. 같은 실행에서 쉬는 터널의 건강 검사가 2분마다 핸드셰이크를 마침(로그 `tunnel health check: handshake completed`) |
 
 ## 남은 일
@@ -94,6 +95,7 @@
 - **9번 사용자 확인**: 방식 바꾸기(직접으로 바꾸면 e621이 막히는지, 다시 Mullvad), 위치 바꾸기, "다시 연결", e621 로그아웃·로그인(설정 칸에서), Wi-Fi를 3분 넘게 껐다 켜서 끊김 감지·자동 재연결, 재연결 뒤 썸네일 다시 받기. Mullvad 로그아웃·로그인(기기 `divine condor`가 지워지고 새 기기가 등록됨)과 `.conf` 가져오기(mullvad.net에서 만들면 기기 칸을 하나 씀)는 원할 때만.
 - 끊김 감지는 테스트로 고정하지 못했다(실제 WireGuard 상대가 필요). 실제 앱에서 Wi-Fi를 끄는 방법으로만 확인한다. macOS 잠자기 동안 단조 시계가 멈추는 경우의 동작도 확인하지 않았다.
 - 18세 확인 화면의 다크 모드, 저장하지 못했을 때의 알림, 실제 버튼 클릭([18세 이상입니다], [종료])과 설정 화면의 언어 버튼 클릭은 손으로 해 보지 않았다(임시 코드로 같은 함수를 불렀다). 최근 검색어 목록의 클릭·키보드 선택, 설정 화면의 썸네일 크기 슬라이더와 [지우기]도 같다. 사용자 확인 때 함께 본다.
+- 다운로드 칸의 [선택…](폴더 대화상자), [열기], 잘못된 규칙을 입력했을 때의 오류 표시는 손으로 해 보지 않았다. Windows의 폴더 대화상자와 경로 표시도 미확인.
 - 블랙리스트 다시 받기는 실제 앱에서 해 보지 않았다. 창을 5분 넘게 둔 뒤 다른 앱에서 돌아와야 하고, 바뀐 결과를 보려면 e621에서 블랙리스트를 고쳐야 한다. 테스트로만 확인.
 - Mullvad 오류 `MAX_DEVICES_REACHED`, `DEVICE_NOT_FOUND`는 소스의 이름만 따랐고 실제로 받아 보지 않았다.
 - 설정 화면의 다크 모드, 위치 메뉴를 펼친 모양, 로그인 시트 오류 표시는 아직 못 봤다.
@@ -119,7 +121,7 @@
 
 ## 다음 할 일
 
-1. 1단계 10-3(다운로드 폴더·파일 이름 규칙) → 10-4(이미지 디스크 캐시·비우기).
+1. 1단계 10-4(이미지 디스크 캐시·비우기).
 2. 전체 코드 작성 뒤 9번 사용자 확인(위 "남은 일" 첫 항목). 로컬 커밋 푸시(`origin/main`은 2f6c25f, 548d894부터 전부).
 
 ## 개발 메모
@@ -131,7 +133,7 @@
 - 디버그 로그: `RUST_LOG=info,tailgate_lib=debug npm run tauri dev`. 웹 인스펙터는 `TAILGATE_DEVTOOLS=1`(디버그 빌드에서만).
 - 검사: `cargo test`, `cargo clippy --all-targets`, `cargo fmt --check`(`src-tauri`), `npm test`, `npm run check`, `npm run build`. Svelte 경고는 `npm run check`가 아니라 `npm run build`에서만 나오는 것이 있으니 둘 다 본다.
 - 클릭·입력이 필요한 화면 확인은 사용자가 개발 앱에서 직접 한다. 꼭 필요할 때만 커밋하지 않는 임시 자동 실행 코드(`// TEMP verification`)를 `App.svelte`에 넣고 확인 뒤 지운다. 창이 다른 창에 가려지면 WebKit이 타이머와 미디어를 멈추니 그동안 창을 앞에 두어야 한다.
-- 다운로드는 `~/Downloads/Tailgate`에 저장된다.
+- 다운로드는 기본으로 `~/Downloads/Tailgate`에 저장된다. 설정 화면에서 폴더와 이름 규칙을 바꾸면 `settings.json`의 `downloads`에 남는다.
 - **앱이 연결된 동안 `tunnel_probe`·`api_probe`를 돌리지 않는다.** 같은 기기 키라 먼저 연결한 쪽이 응답을 못 받는다(research.md 7절). 앱도 두 개 띄울 수 없다(개발 앱과 설치본 포함).
 - 터널 패킷 보기: `RUST_LOG=info,tunnel_packets=trace,smoltcp=trace`(gotatun까지 보려면 `gotatun=trace`). 오가는 IP 패킷과 smoltcp의 DNS·TCP 상태가 찍힌다. 응답이 아예 안 오는 문제는 이것으로 구분한다.
 - 연결 설정을 처음 상태로 되돌리려면 앱을 끄고 `settings.json`을 지운다(첫 실행 규칙을 다시 탄다. 18세 확인과 언어도 처음 상태가 된다). 서버 목록 캐시는 `relays.json`을 지우면 다음 연결에서 새로 받는다.
