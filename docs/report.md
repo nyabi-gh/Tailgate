@@ -44,7 +44,7 @@ Windows·macOS용 e621 뷰어. 다른 사람에게도 배포한다.
 - **계정**: 사용자명 + API 키 로그인, `/users/me.json`으로 확인, 로그아웃. 로그인 없이도 둘러보기 가능.
 - **검색**: 태그 입력(자동완성, 입력한 태그를 카테고리 색으로 표시), 정렬 메뉴, 최근 검색어.
 - **그리드**: 같은 크기의 3:4 세로형 칸에 그림을 꽉 채워(잘라) 넣는 격자, 가상 스크롤, 무한 스크롤, 썸네일 크기 조절(Ctrl/⌘ + 휠 또는 슬라이더). 처음에는 원본 비율을 지키는 행 정렬(justified)이었으나, 칸마다 폭이 달라 어수선하다는 사용자 의견으로 2026-10-21에 바꿨다. 그림 전체는 뷰어에서 본다.
-- **뷰어**: 창 전체를 덮는 뷰어. 이미지는 샘플을 먼저 띄우고 원본은 확대하거나 요청할 때 받음. 줌·패닝, GIF, 동영상(MP4 우선) 반복 재생. 오른쪽 패널에 메타 정보와 카테고리별 태그.
+- **뷰어**: 창 전체를 덮는 뷰어. 이미지는 샘플을 먼저 띄우고 원본은 확대해서 샘플 해상도를 넘거나 "원본 보기"를 누를 때 받음(열 때마다 받으면 넘기기가 느려서). GIF는 샘플이 정지 이미지라 처음부터 원본. 줌·패닝, 동영상(MP4 우선) 반복 재생, 음소거로 시작하고 켜면 실행 동안 기억. 오른쪽 패널에 메타 정보, 출처 링크(기본 브라우저, opener 권한은 http/https 전체), 카테고리별 태그. ←/→, Esc, I(정보), 0(맞춤).
 - **키보드**: ←/→ 이전·다음, Esc 닫기, F 즐겨찾기, ↑/↓ 투표, / 검색창, D 다운로드.
 - **즐겨찾기·투표**, 내 즐겨찾기 목록.
 - **블랙리스트**: 계정의 블랙리스트(로그아웃 상태에서는 e621의 익명 기본 목록)를 사이트와 같은 규칙으로 Rust에서 평가해 걸러 냄(research.md 2절). "N개 숨김"을 누르면 그 검색 동안 보이게 함.
@@ -106,19 +106,21 @@ tailgate/
     lib/
       connection.svelte.ts  연결 상태 (명령 + 이벤트 구독), canLoadRemote()
       account.svelte.ts  계정 상태 (명령 + 이벤트 구독), signIn/signOut
-      media.ts           static1 URL → media:// 주소, 썸네일/샘플/원본/동영상 선택
+      media.ts           static1 URL → media:// 주소, 뷰어에 띄울 미디어 선택(viewerMedia)
       platform.ts        OS 판별, 단축키 표기
       i18n/              en.ts(기준), ko.ts, 현재 언어 상태
       views.ts           사이드바 화면 목록
       ipc.ts             invoke 래퍼 (명령 이름·타입을 한곳에)
       layout.ts          격자 계산(열 수·칸 크기·보이는 범위), 썸네일 크기 범위 (순수 함수, vitest)
+      zoom.ts            뷰어 줌·패닝 계산(맞춤 배율, 커서 기준 확대, 이동 제한) (순수 함수, vitest)
+      viewer.svelte.ts   뷰어 상태(열린 게시물, 이전·다음, 정보 패널, 음소거)
       search.svelte.ts   검색 상태 (시작·다음 페이지·다시 시도), 알게 된 태그 카테고리
       posts.ts           Rust 모델의 TS 타입, API 오류 코드
       tags.ts            태그 토큰 해석(제외·메타태그), 카테고리 색
       keys.ts            키보드 단축키
     state/               검색, 계정, 설정 상태 (Svelte runes 모듈)
     views/               Search, Viewer, Favorites, Settings, Login
-    components/          Sidebar, SearchField, EmptySearch, Grid, Thumb, TagInput, TagList …
+    components/          Sidebar, EmptySearch, TagInput, SortMenu, Grid, Thumb, Viewer, MediaStage, InfoPanel, SignInSheet …
     styles/app.css       Tailwind 진입점, 디자인 토큰(CSS 변수 + @theme), 기본 스타일
 ```
 

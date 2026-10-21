@@ -233,4 +233,5 @@ OS에 TUN 인터페이스를 만들면 관리자 권한(macOS 네트워크 확�
 - 테마 반경을 `--radius-s`, `--radius-l`로 지으면 `rounded-s`, `rounded-l`이 테마 값 규칙과 내장 규칙(논리적 시작 쪽, 왼쪽 두 모서리)으로 **두 번** 생성되고, 뒤에 오는 내장 규칙이 일부 모서리를 0.25rem으로 덮는다. WKWebView에서 계산값을 재 보니 `rounded-l` 패널은 왼쪽 위·오른쪽 위·왼쪽 아래·오른쪽 아래가 4/14/4/14px, `rounded-s`는 4/6/4/6px이었다. `--radius-m`은 겹치는 내장 이름이 없어 9px로 맞았다.
 
 ### WKWebView (macOS 27.0.1)
+- `document.startViewTransition`이 있다(2026-10-21 실제 앱에서 확인). 썸네일 → 뷰어 전환에 쓴다. 기능 검사는 그대로 둔다(report.md 8절).
 - `navigator.language`는 앱 번들의 지역화 선언과 관계없이 시스템 언어를 돌려준다. 시스템 언어가 `ko-KR`일 때 번들 없는 실행 파일, Tauri식 번들(`CFBundleDevelopmentRegion`만 있음), `CFBundleLocalizations`에 ko를 넣은 번들 셋 다 `ko-KR`이었다. `Bundle.main.preferredLocalizations`는 앞의 둘에서 `en`이었으므로 웹뷰 언어와는 별개다.
