@@ -45,7 +45,7 @@ pub struct NetStack {
 struct State {
     iface: Interface,
     sockets: SocketSet<'static>,
-    device: PacketQueues,
+    device: phy::Tracer<PacketQueues>,
     dns: SocketHandle,
     next_port: u16,
     closing: Vec<SocketHandle>,
@@ -67,7 +67,12 @@ impl NetStack {
     pub fn new(address: Ipv4Addr, dns_server: Ipv4Addr) -> (Arc<Self>, PacketPorts) {
         let (to_stack, inbound) = mpsc::unbounded_channel();
         let (outbound, from_stack) = mpsc::unbounded_channel();
-        let mut device = PacketQueues { inbound, outbound };
+        // Tunnel problems show up only as packets that never come back, so every packet can be
+        // logged with `RUST_LOG=tunnel_packets=trace`.
+        let mut device = phy::Tracer::new(
+            PacketQueues { inbound, outbound },
+            |_, packet| tracing::trace!(target: "tunnel_packets", "{packet}"),
+        );
 
         let mut config = Config::new(HardwareAddress::Ip);
         // TCP initial sequence numbers and DNS query IDs come from this seed; smoltcp's default of
