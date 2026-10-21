@@ -185,7 +185,7 @@ OS에 TUN 인터페이스를 만들면 관리자 권한(macOS 네트워크 확�
 
 ### 터널 시작과 static1 속도 (2026-10-19 2차, 릴리스 빌드, `jp-tyo-wg-001`)
 - 핸드셰이크 포함 터널 시작(`Tunnel::start`, 서버 목록 받기 제외): 37회(릴리스 34, 디버그 3) 중 35회가 31~38ms(핸드셰이크 왕복 약 30ms). 99ms 1회(응답 97ms, 재전송 없음), 5.3초 1회(디버그 빌드, 로그 없음. WireGuard 재전송 간격 5초와 맞아 첫 핸드셰이크 패킷 유실로 보이지만 확인 못 함).
-- 터널이 올라온 직후 첫 요청(`am.i.mullvad.net`)이 SOCKS `TtlExpired`로 실패한 것이 37회 중 2회(07:45 무렵 연달아). netstack의 DNS(10초)나 연결(15초) 시간 초과다. 경과 시간으로는 DNS 쪽으로 보이지만 확정 못 함. 이후 30회는 재현되지 않았고, smoltcp 로그가 꺼져 있고 패킷 캡처 권한이 없어 원인은 미확인.
+- 터널이 올라온 직후 첫 요청(`am.i.mullvad.net`)이 SOCKS `TtlExpired`로 실패한 것이 37회 중 2회(07:45 무렵 연달아). 원인은 아래 "같은 키 터널 충돌"에서 확인했다(2026-10-21).
 - 같은 터널에서 Cloudflare 10MB는 3.2~4.9 MB/s, static1 원본(3~7MB)은 0.33~0.98 MB/s(20회).
 - 같은 static1 파일을 직접과 터널로 번갈아 받기(curl, `tunnel_probe --serve`의 SOCKS5):
 
@@ -198,6 +198,23 @@ OS에 TUN 인터페이스를 만들면 관리자 권한(macOS 네트워크 확�
 - 720p 샘플 비트레이트: 0.11~0.14 MB/s(4개, 14초~11분짜리). 터널 속도는 그 5~8배다.
 - 터널에서 Range 크기별 응답 시간(각 3회): 256KB 1.1~2.1초, 512KB 1.4~1.5초, 1MB 1.8~2.1초, 2MB 2.6~3.6초. 첫 바이트 대기(약 0.5초)와 연결이 크기보다 크게 작용한다.
 - 720p 샘플 3개 모두 `ftyp` 다음에 바로 `moov`가 있다(faststart). `moov`는 8KB~480KB(11분짜리가 480KB)라 첫 1MB 안에 들어간다.
+
+### 같은 키 터널 충돌과 응답 없는 서버 (2026-10-21, 디버그 빌드)
+
+임시 반복 프로그램으로 터널을 띄우고 곧바로 터널 안 DNS → TCP 연결(443)을 했다. 매번 새 gotatun 장치·smoltcp 스택이고, smoltcp `log` 기능과 netstack 패킷 로그(`phy::Tracer`)를 켰다.
+
+| 실험 | 결과 |
+|---|---|
+| 터널 하나, 도쿄 서버 무작위, 회차 사이 2초, 300회 | 터널이 올라온 229회 모두 DNS·연결 성공(DNS 최대 0.3초) |
+| 같은 실험, 멈추자마자 다시 연결, 40회 | 터널이 올라온 31회 모두 성공 |
+| 같은 키로 터널 A → B를 같은 서버(wg-001)에, 5라운드 | B의 DNS는 매번 약 30ms에 성공, **A의 DNS는 5/5회 10.00초 시간 초과** |
+| B가 떠 있는 채 C를 띄움, 5라운드 | **B의 DNS 5/5회 10.00초 시간 초과** |
+
+- 패킷 로그: A는 DNS 질의를 0·1·3·7초(smoltcp 재전송 간격)에 보냈고 netstack에 들어온 패킷은 하나도 없다. 같은 시각 B의 질의는 33ms 만에 응답을 받았다.
+- 해석: WireGuard 서버는 피어(공개 키) 하나에 대해 마지막 핸드셰이크로 생긴 세션의 키로만 응답을 암호화한다. 먼저 연결한 터널은 보낼 수는 있어도 응답을 풀지 못하고, gotatun은 모르는 수신 인덱스의 패킷을 로그 없이 버린다(8절). 터널 안 DNS 제한(10초)이 smoltcp 자체 제한(10초)보다 먼저 끝나므로 SOCKS 응답은 `TtlExpired`다. smoltcp·netstack 결함이 아니다.
+- 10-19의 2회: 당시 `tunnel_probe`는 늘 목록 첫 서버(wg-001)를 썼고, 같은 날 개발 앱도 같은 기기 키로 wg-001에 연결해 시험했다. 그 시각에 앱이 떠 있었는지는 기록이 없어 단정할 수 없지만, 터널 하나로는 260회 0건, 충돌로는 10/10건이다.
+- 앱에서 생길 수 있는 경우: 앱 두 개(Windows 두 번 실행, 개발 앱과 설치본), 앱이 연결된 동안의 probe, 같은 `.conf`를 다른 WireGuard 앱에서도 켜 둔 경우. 두 쪽이 번갈아 핸드셰이크하며(gotatun은 응답 없는 데이터 15초 뒤, 건강 검사는 120초마다) 서로 끊는다. 대응은 report.md 6.6절.
+- **`jp-tyo-wg-002`는 핸드셰이크에 한 번도 답하지 않았다**(반복 실행에서 80/80회, 포트를 53·4500·51820으로 바꿔 각 2회도 모두). 같은 조건에서 wg-001은 포트 53에서도 바로 붙었다. 서버는 ping에 답하고, `app/v1/relays`와 `www/relays/wireguard` 모두 `active`, 공개 키도 같다. 다른 도쿄 서버와 달리 `app/v1`에서 `daita`·`features` 항목이 없다. 원인(이 서버에 기기 키가 배포되지 않았는지, WireGuard가 멈췄는지)은 앱 쪽에서는 가릴 수 없다. wg-203도 1/65회 답하지 않았다. 대응은 report.md 6.2절(답하지 않은 서버 빼기).
 
 ## 8. 의존성 동작 확인 (2026-10-19 재검토)
 
@@ -212,6 +229,8 @@ OS에 TUN 인터페이스를 만들면 관리자 권한(macOS 네트워크 확�
 - 핸드셰이크 재시도 간격 `REKEY_TIMEOUT`은 5초(+지터), 시도 한도 `REKEY_ATTEMPT_TIME`은 90초(`noise/timers.rs`).
 - `IpRecv::recv`가 오류를 돌려주면 송신 루프가 "Unexpected error on tun interface"를 남기고 끝난다(`device/mod.rs` `handle_outgoing`). gotatun 자체 TUN 리더는 파싱할 수 없는 패킷을 오류로 돌려준다(`tun/tun_async_device.rs`). 그래서 우리 어댑터(`wg.rs`)는 이상한 패킷을 오류로 올리지 않고 버린다.
 - `Device`를 `stop()` 없이 버리면 Drop이 정지 작업을 띄운다.
+- 받은 패킷의 수신 인덱스가 이 장치의 세션에 없으면 로그 없이 버린다(`device/mod.rs` `handle_incoming`의 `peers_by_idx` 조회). 복호화 오류(`TunnResult::Err`)도 그냥 넘어간다. 같은 키를 다른 곳에서 쓸 때 응답이 사라지는 지점이다(7절).
+- `force_handshake`의 완료 신호는 핸드셰이크 응답을 받아들였을 때만 온다(`device/peer_state.rs` `handle_incoming_packet`). 세션이 생기기 전에 첫 요청이 나가는 일은 없다.
 
 ### smoltcp 0.14.0
 - `iface::Config::new`의 `random_seed` 기본값은 **0**이다(`iface/interface/mod.rs`). TCP 초기 순서 번호(`socket/tcp.rs` `connect`)와 DNS 질의 ID·출발 포트(`socket/dns.rs`)가 이 시드에서 나온다. 문서도 부팅마다 다른 값을 쓰라고 권한다.
@@ -226,6 +245,11 @@ OS에 TUN 인터페이스를 만들면 관리자 권한(macOS 네트워크 확�
 - `ClientBuilder::proxy`를 부르면 시스템 프록시 자동 사용이 꺼진다(`async_impl/client.rs` `proxy`). e621 요청이 시스템 프록시로 새지 않는다. Mullvad용 클라이언트는 프록시를 지정하지 않으므로 시스템 프록시를 따른다.
 - `connect_timeout`, `read_timeout`(읽기 사이 간격), `timeout`(요청 전체)이 있다.
 - 의존성 트리에 `ring`은 없고 암호 백엔드는 aws-lc-rs 하나다(gotatun, rustls). 7절의 "하나로 통일"이 맞다.
+
+### tauri-plugin-single-instance 2.5.4
+- macOS는 `/tmp/<번들 ID의 .과 -를 _로>_si.sock` Unix 소켓, Windows는 번들 ID로 이름 붙인 뮤텍스로 이미 실행 중인지 안다. 플러그인 `setup`에서 판단해 두 번째 프로세스는 `exit(0)`하므로 앱의 `setup`(터널 시작) 전에 끝난다(`platform_impl/macos.rs`, `windows.rs`).
+- 강제 종료로 소켓 파일이 남아도 다음 실행이 연결을 시도해 `ConnectionRefused`를 받으면 지우고 새로 듣는다. 실측: 앱을 SIGTERM으로 끝낸 뒤 다시 실행하면 정상 시작.
+- 실측(macOS): 앱이 떠 있을 때 실행 파일을 다시 실행하면 0초 만에 종료 코드 0으로 끝나고 터널은 하나뿐이다. 다른 앱이 앞에 있을 때 터미널에서 다시 실행하면 창이 앞으로 오지 않았다. tao의 `set_focus`는 `activateIgnoringOtherApps`를 부르는데(`platform_impl/macos/util/async.rs`), macOS 14부터 이 요청은 시스템이 거절할 수 있다(협조적 활성화). 원인 확인은 하지 않았다. Finder·Dock에서 이미 실행 중인 `.app`을 열면 macOS가 새 프로세스 없이 기존 앱을 앞으로 가져온다.
 
 ### wry 0.57.0
 - macOS 커스텀 프로토콜 응답에 본문 길이로 `Content-Length`를 직접 넣는다(`wkwebview/class/url_scheme_handler.rs`).

@@ -10,17 +10,20 @@
 
 같은 날 검색 화면이 태그 없이 최신 게시물로 열리게 바꿨다. e621의 첫 화면에 해당하므로 따로 홈 버튼을 두지 않는다(report.md 3절).
 
+터널 직후 첫 요청이 가끔 `TtlExpired`로 실패하던 원인을 재현으로 확인했다(2026-10-21, research.md 7절): 같은 Mullvad 기기 키로 터널이 둘 떠 있으면 먼저 연결한 쪽이 응답을 받지 못한다. 앱을 한 번에 하나만 실행되게 하고, WireGuard 파일 칸에 안내를 넣었다. 조사 중 `jp-tyo-wg-002`가 핸드셰이크에 전혀 답하지 않는 것도 찾아, 답하지 않은 서버는 실행 중 후보에서 빼고 바로 다른 서버로 다시 시도하게 했다.
+
 ## 구현 현황
 
 | 영역 | 파일 | 상태 |
 |---|---|---|
 | 창·UI 껍데기 | `lib.rs`, `App.svelte`, `components/` | 반투명 사이드바, 떠 있는 본문 패널(반경 14px), 검색창(⌘K / Ctrl K, `/`), 영어·한국어, 화면 아래 알림. 앱 아이콘(`src-tauri/icons/source.svg`가 원본). 사이드바의 인기·풀·세트 화면은 아직 비어 있음 |
+| 단일 실행 | `lib.rs` | `tauri-plugin-single-instance`. 두 번째 실행은 터널을 열기 전에 끝나고 떠 있는 창을 앞으로(report.md 6.6절) |
 | 연결 표시 | `Sidebar.svelte`, `ConnectionStatus.svelte`, `connection.svelte.ts` | 직접 / 연결 중 / `VPN · 서버` / 실패(원인은 마우스를 올리면). 설정 화면과 같은 표시 |
-| 설정 화면 | `Settings.svelte`, `MullvadSignInSheet.svelte`, `settings.rs` | 계정 칸(e621 로그인·로그아웃), 연결 칸(상태·다시 연결, 방식 분할 버튼, WireGuard 파일·서버, Mullvad 기기·만료·위치, 로그인 시트). 설정은 `~/Library/Application Support/pro.tb.nyabi.Tailgate/settings.json`. 나머지 설정 항목은 10번 |
+| 설정 화면 | `Settings.svelte`, `MullvadSignInSheet.svelte`, `settings.rs` | 계정 칸(e621 로그인·로그아웃), 연결 칸(상태·다시 연결, 방식 분할 버튼, WireGuard 파일·서버, Mullvad 기기·만료·위치, 로그인 시트). WireGuard 방식일 때 같은 파일을 다른 앱에서 동시에 쓰지 말라는 안내. 설정은 `~/Library/Application Support/pro.tb.nyabi.Tailgate/settings.json`. 나머지 설정 항목은 10번 |
 | 키체인 | `secrets.rs` | 완료 |
 | `.conf` 가져오기 | `tunnel/config.rs`, `network.rs`, `commands.rs` | Rust가 파일 대화상자를 열고 읽어 키체인 `wireguard-config`에 저장 |
-| Mullvad | `tunnel/mullvad.rs`, `relays.rs`, `network.rs` | 토큰, 기기 등록·삭제, 만료일, 서버 목록(ETag, `~/Library/Caches/pro.tb.nyabi.Tailgate/relays.json`, 약 90KB), 도시별 위치 목록, 도시 안에서 무작위 서버. 로그인·로그아웃 |
-| 터널 | `tunnel/` | gotatun + smoltcp + SOCKS5. 핸드셰이크가 끝나야 시작 성공, 무응답 연결은 45초에 끊음 |
+| Mullvad | `tunnel/mullvad.rs`, `relays.rs`, `network.rs` | 토큰, 기기 등록·삭제, 만료일, 서버 목록(ETag, `~/Library/Caches/pro.tb.nyabi.Tailgate/relays.json`, 약 90KB), 도시별 위치 목록, 도시 안에서 무작위 서버(핸드셰이크에 답하지 않은 서버는 실행 중 빼고 바로 다른 서버로 한 번 더). 로그인·로그아웃 |
+| 터널 | `tunnel/` | gotatun + smoltcp + SOCKS5. 핸드셰이크가 끝나야 시작 성공, 무응답 연결은 45초에 끊음. 패킷 로그(`RUST_LOG=tunnel_packets=trace,smoltcp=trace`, 기본 꺼짐) |
 | 킬 스위치·재연결 | `network.rs`, `tunnel/socks.rs`, `tunnel/mod.rs` | report.md 6.3절 1~6. `Network::run`이 연결을 맡고, 라우트가 바뀌면 옛 연결을 끊고, 터널 건강 검사(120초 넘으면 핸드셰이크, 20초 제한), 일시적 실패는 1~60초 간격으로 다시 시도 |
 | 실패 코드 | `network.rs` → `connection.svelte.ts` → i18n | report.md 6.4절의 11가지와 설정 변경 오류 |
 | 타임아웃 | `network.rs`, `tunnel/` | report.md 6.5절 |
@@ -77,6 +80,8 @@
 
 | 10-21 | 연결 설정 | `cargo test`(99: SOCKS 라우트 전환 2 — 고치기 전 동작에서 실패 확인, 설정 파일 4, 서버 목록 캐시 5, 연결 13: 첫 실행·설정 손상·키체인 오류·로그인 필요·WireGuard 없음/손상·방식 변경·재시도 간격·가져오기·Mullvad 로그인·로그인 실패·로그아웃·기기 삭제 실패), `cargo clippy`·`fmt`, `npm run check`·`build`·`test`, 실제 앱(첫 실행, 캐시 없음) | 통과. 앱: 설정 파일 없이 저장된 기기로 `jp-tyo-wg-201` 터널(무작위 선택), 서버 목록 저장(90KB), e621 로그인 확인. 임시 코드로 설정 화면을 열어 캡처: 상태·방식·기기 `divine condor`·만료일·위치 "일본 · Tokyo" 표시. Mullvad API에 304·오류 코드 직접 확인(research.md 6절) |
 
+| 10-21 | 터널 직후 `TtlExpired` 원인 | 임시 반복 프로그램(smoltcp 로그·패킷 로그), 디버그 빌드, 도쿄 서버 | 터널 하나로는 300회·간격 없는 40회에서 첫 요청 실패 0건. 같은 키 터널 둘이면 먼저 연결한 쪽 DNS가 10/10회 10.00초 시간 초과, 그 사이 들어온 패킷 0개. `jp-tyo-wg-002`는 핸드셰이크 80/80회 무응답(포트 53·4500도). research.md 7절 |
+| 10-21 | 단일 실행·서버 빼기 | `cargo test`(101: 답하지 않은 서버 빼기, 모두 빠지면 전부 다시 후보), `cargo clippy`·`fmt`, `npm run check`·`build`·`test`, 앱의 `Network`로 다시 연결 15회(임시 예제), 실제 개발 앱 | 통과. 첫 시도가 wg-002에 걸리자 실패 표시 없이 목록을 새로 받아 wg-202로 연결(14.9초), 이후 14회 wg-002를 고르지 않음. 앱이 떠 있을 때 다시 실행하면 0초 만에 종료 코드 0, 터널은 하나. SIGTERM 뒤 남은 소켓이 있어도 정상 시작. 다른 앱이 앞에 있을 때 터미널에서 다시 실행하면 창이 앞으로 오지 않음(research.md 8절) |
 | 10-21 | 최신순 첫 화면 | `cargo test`(100: 빈 검색이 `tags=`와 `b<id>` 커서로 요청), `npm run check`·`build`·`test`, 실제 앱(Vite 다시 불러오기) | 통과. 앱이 최신 게시물 격자로 열리고 정렬 "최신순" 표시. 같은 실행에서 쉬는 터널의 건강 검사가 2분마다 핸드셰이크를 마침(로그 `tunnel health check: handshake completed`) |
 
 ## 남은 일
@@ -97,7 +102,9 @@
 - 최근 검색어, 정렬·썸네일 크기 기억은 10번(설정 저장)에서 한다.
 - 로그인 시트의 다크 모드와 오류 표시는 실제 앱에서 아직 못 봤다(시스템이 라이트 모드, 앱 밖 브라우저에서는 명령이 없어 오류를 띄울 수 없음). 오류 경로는 테스트로만 확인.
 - 탐색 반응 시간을 창이 앞에 있는 상태로 다시 잰다(가려진 창에서는 WebKit이 미디어 로딩과 타이머를 멈춘다). 부족하면 report.md 7.2절의 첫 블록 축소·동시 받기를 검토한다. 확인용 임시 패널은 커밋하지 않는다. `canLoadRemote()`가 참일 때만 `mediaUrl(...)`로 `<video>`를 띄운다(예: 게시물 6791442의 720p 샘플, 6791860의 3분 MP4).
-- **터널 직후 첫 요청이 가끔 `TtlExpired`로 실패**(37회 중 2회, research.md 7절). 재현될 때 DNS 질의·응답이 오갔는지 보려면 smoltcp `log` 기능이나 netstack 임시 로그가 필요하다(다시 빌드하면 키체인 허용 창이 뜬다). 앱에서 생기면 첫 화면 요청이 10~15초 뒤 실패하므로 1단계 9번 전에 다룬다.
+- 단일 실행을 Windows에서 확인하지 못했다(두 번째 실행이 끝나고 기존 창이 앞으로 오는지).
+- 같은 `.conf`를 다른 WireGuard 앱과 함께 쓰는 충돌은 안내만 하고 감지하지 않는다. gotatun이 모르는 세션의 패킷을 신호 없이 버려서 감지하려면 우회가 필요하다.
+- `jp-tyo-wg-002`가 다른 기기(공식 Mullvad 앱)에서는 붙는지 확인하면 우리 기기 키만의 문제인지 가릴 수 있다(원할 때만).
 - 터널 시작이 5.3초 걸린 1회(첫 핸드셰이크 재전송으로 보임)가 다시 나오는지 지켜본다.
 - 터널 안 연결이 리셋되거나 timeout으로 끊기면 읽기가 오류가 아니라 EOF로 끝난다. 지금은 모든 요청이 TLS라 잘림이 오류로 드러나지만, 평문 요청을 쓰게 되면 `netstack.rs`에서 구분해야 한다.
 - Windows 실측 전부: 터널, aws-lc-rs 빌드, WebView2의 `media://` Range, Mica, Ctrl K. Windows 기기나 VM이 필요하다.
@@ -107,9 +114,8 @@
 
 ## 다음 할 일
 
-1. 9번 사용자 확인(위 "남은 일" 첫 항목). 로컬 커밋 푸시(548d894 이후 전부).
-2. 터널 직후 첫 요청 실패의 원인 추적(위 "남은 일"). 재연결이 생겨 "터널 직후 첫 요청"이 더 자주 생긴다.
-3. 1단계 10번: 나머지 설정(다운로드 폴더·파일명 규칙, 썸네일 크기, 캐시 비우기, 언어), 18세 확인.
+1. 1단계 10번: 나머지 설정(다운로드 폴더·파일명 규칙, 썸네일 크기, 캐시 비우기, 언어), 18세 확인.
+2. 전체 코드 작성 뒤 9번 사용자 확인(위 "남은 일" 첫 항목). 로컬 커밋 푸시(`origin/main`은 2f6c25f, 548d894부터 전부).
 
 ## 개발 메모
 
@@ -121,6 +127,8 @@
 - 검사: `cargo test`, `cargo clippy --all-targets`, `cargo fmt --check`(`src-tauri`), `npm test`, `npm run check`, `npm run build`. Svelte 경고는 `npm run check`가 아니라 `npm run build`에서만 나오는 것이 있으니 둘 다 본다.
 - 클릭·입력이 필요한 화면 확인은 사용자가 개발 앱에서 직접 한다. 꼭 필요할 때만 커밋하지 않는 임시 자동 실행 코드(`// TEMP verification`)를 `App.svelte`에 넣고 확인 뒤 지운다. 창이 다른 창에 가려지면 WebKit이 타이머와 미디어를 멈추니 그동안 창을 앞에 두어야 한다.
 - 다운로드는 `~/Downloads/Tailgate`에 저장된다.
+- **앱이 연결된 동안 `tunnel_probe`·`api_probe`를 돌리지 않는다.** 같은 기기 키라 먼저 연결한 쪽이 응답을 못 받는다(research.md 7절). 앱도 두 개 띄울 수 없다(개발 앱과 설치본 포함).
+- 터널 패킷 보기: `RUST_LOG=info,tunnel_packets=trace,smoltcp=trace`(gotatun까지 보려면 `gotatun=trace`). 오가는 IP 패킷과 smoltcp의 DNS·TCP 상태가 찍힌다. 응답이 아예 안 오는 문제는 이것으로 구분한다.
 - 연결 설정을 처음 상태로 되돌리려면 앱을 끄고 `settings.json`을 지운다(첫 실행 규칙을 다시 탄다). 서버 목록 캐시는 `relays.json`을 지우면 다음 연결에서 새로 받는다.
 - 원격 저장소: `origin` = https://github.com/nyabi-gh/Tailgate (공개). 공개 저장소 생성 같은 명령은 권한 검사에 막혀 사용자가 직접 실행했다.
 - 화면 확인: 키 입력 자동화(손쉬운 사용) 권한은 없고 화면 기록 권한은 있다. 창 캡처는 `CGWindowListCopyWindowInfo`로 창 번호를 찾아 `screencapture -l <번호>`. CSS 계산값은 작은 Swift 프로그램으로 WKWebView에 빌드된 CSS를 띄워 `getComputedStyle`로 잰다.
