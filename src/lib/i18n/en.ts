@@ -1,3 +1,4 @@
+import { isMac } from "../platform";
 const en = {
   nav: {
     search: "Search",
@@ -50,6 +51,29 @@ const en = {
       credentialStore: "Could not use the system's credential store.",
       other: "Something went wrong. Try again.",
     },
+  },
+  actions: {
+    favorite: "Favorite",
+    unfavorite: "Remove from favorites",
+    voteUp: "Vote up",
+    voteDown: "Vote down",
+    download: "Download",
+    downloading: (percent: number) => `Saving ${percent}%`,
+    favoriteFailed: "Could not change the favorite.",
+    voteFailed: "Could not vote.",
+    downloadFailed: "Could not save the file.",
+    downloadError: {
+      network: "Check the connection.",
+      storage: "The download folder could not be written.",
+      other: "Try again.",
+    },
+    saved: (name: string) => `Saved ${name}`,
+    alreadySaved: (name: string) => `${name} is already saved`,
+    reveal: isMac ? "Show in Finder" : "Show in Explorer",
+  },
+  favorites: {
+    signedOut: "Sign in to see your favorites.",
+    empty: "You have no favorites yet.",
   },
   viewer: {
     close: "Close",

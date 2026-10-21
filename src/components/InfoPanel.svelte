@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { ArrowDown, ArrowUp, CircleAlert, ExternalLink, Heart, LoaderCircle } from "@lucide/svelte";
+  import { ArrowDown, ArrowUp, CircleAlert, Download, ExternalLink, Heart, LoaderCircle } from "@lucide/svelte";
+  import { download, downloadProgress, toggleFavorite, vote } from "../lib/actions.svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { currentLocale, m } from "../lib/i18n/index.svelte";
   import type { Post, TagCategory } from "../lib/posts";
@@ -35,6 +36,14 @@
   );
   const count = (n: number) => n.toLocaleString(currentLocale());
 
+  const saving = $derived(downloadProgress(post.id));
+  const percent = $derived(
+    saving && saving.total > 0 ? Math.min(100, Math.floor((saving.received / saving.total) * 100)) : 0,
+  );
+
+  const action =
+    "flex h-8 items-center gap-1.5 rounded-md px-2.5 font-medium transition-colors hover:bg-hover disabled:opacity-60";
+
   function open(url: string) {
     openUrl(url).catch((cause) => console.error("could not open a source link", cause));
   }
@@ -57,6 +66,46 @@
         <Heart size={14} strokeWidth={2} />{count(post.favCount)}
       </span>
       <span>{m().viewer.rating[post.rating]}</span>
+    </div>
+    <div class="-ml-2.5 flex flex-wrap items-center gap-1">
+      <button
+        class={[action, post.isFavorited ? "text-focus" : "text-ink/80"]}
+        aria-pressed={post.isFavorited}
+        title="{post.isFavorited ? m().actions.unfavorite : m().actions.favorite} (F)"
+        onclick={() => toggleFavorite(post)}
+      >
+        <Heart size={16} strokeWidth={2} class={post.isFavorited ? "fill-current" : ""} />
+      </button>
+      <button
+        class={[action, post.vote === 1 ? "text-focus" : "text-ink/80"]}
+        aria-pressed={post.vote === 1}
+        title="{m().actions.voteUp} (↑)"
+        onclick={() => vote(post, true)}
+      >
+        <ArrowUp size={16} strokeWidth={2} />
+      </button>
+      <button
+        class={[action, post.vote === -1 ? "text-focus" : "text-ink/80"]}
+        aria-pressed={post.vote === -1}
+        title="{m().actions.voteDown} (↓)"
+        onclick={() => vote(post, false)}
+      >
+        <ArrowDown size={16} strokeWidth={2} />
+      </button>
+      {#if post.file.url}
+        <button
+          class={[action, "text-ink/80"]}
+          title="{m().actions.download} (D)"
+          disabled={saving !== undefined}
+          onclick={() => download(post)}
+        >
+          {#if saving}
+            <LoaderCircle size={16} strokeWidth={2} class="animate-spin" />{m().actions.downloading(percent)}
+          {:else}
+            <Download size={16} strokeWidth={2} />
+          {/if}
+        </button>
+      {/if}
     </div>
   </section>
 

@@ -2,7 +2,7 @@
   import { ChevronLeft, ChevronRight, PanelRightClose, PanelRightOpen, X } from "@lucide/svelte";
   import { m } from "../lib/i18n/index.svelte";
   import { mediaUrl } from "../lib/media";
-  import { search } from "../lib/search.svelte";
+  import { download, toggleFavorite, vote } from "../lib/actions.svelte";
   import { step, togglePanel, viewer } from "../lib/viewer.svelte";
   import InfoPanel from "./InfoPanel.svelte";
   import MediaStage from "./MediaStage.svelte";
@@ -13,7 +13,7 @@
 
   // Neighbours' display images are fetched ahead, so stepping shows them at once.
   $effect(() => {
-    for (const neighbour of [search.posts[viewer.index - 1], search.posts[viewer.index + 1]]) {
+    for (const neighbour of [viewer.posts[viewer.index - 1], viewer.posts[viewer.index + 1]]) {
       const url = neighbour?.file.ext === "gif" ? null : neighbour?.sample?.url;
       if (url) new Image().src = mediaUrl(url);
     }
@@ -21,9 +21,14 @@
 
   function onkeydown(event: KeyboardEvent) {
     if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
-    // The video's own controls use the arrow keys to seek.
+    // The video's own controls use the arrow keys to seek and to change the volume.
     const inVideo = event.target instanceof HTMLVideoElement;
+    const post = viewer.post;
     if (event.key === "Escape") onclose();
+    else if (event.key === "ArrowUp" && !inVideo && post) vote(post, true);
+    else if (event.key === "ArrowDown" && !inVideo && post) vote(post, false);
+    else if (event.code === "KeyF" && post) toggleFavorite(post);
+    else if (event.code === "KeyD" && post) download(post);
     else if (event.key === "ArrowLeft" && !inVideo) step(-1);
     else if (event.key === "ArrowRight" && !inVideo) step(1);
     else if (event.code === "KeyI") togglePanel();

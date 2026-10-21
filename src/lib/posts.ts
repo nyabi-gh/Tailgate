@@ -77,3 +77,8 @@ export function apiErrorCode(error: unknown): ApiErrorCode {
   if (known === undefined) throw error;
   return known;
 }
+
+export type Favorited = { postId: number; favoriteCount: number };
+
+/** The post's score after a vote, and the user's own vote. */
+export type Voted = { score: number; up: number; down: number; ourScore: number };

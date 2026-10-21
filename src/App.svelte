@@ -7,12 +7,14 @@
   import Sidebar from "./components/Sidebar.svelte";
   import SortMenu from "./components/SortMenu.svelte";
   import TagInput from "./components/TagInput.svelte";
+  import Toasts from "./components/Toasts.svelte";
   import Viewer from "./components/Viewer.svelte";
   import { account } from "./lib/account.svelte";
+  import { onSignInNeeded } from "./lib/actions.svelte";
   import { m } from "./lib/i18n/index.svelte";
   import { CELL_WIDTH } from "./lib/layout";
   import { isMac } from "./lib/platform";
-  import { search, startSearch } from "./lib/search.svelte";
+  import { favorites, startFavorites, startSearch, tagSearch, type PostList } from "./lib/search.svelte";
   import type { Post } from "./lib/posts";
   import { closeViewer, openPost, viewer } from "./lib/viewer.svelte";
   import type { View } from "./lib/views";
@@ -20,8 +22,11 @@
   let view = $state<View>("search");
   let tags = $state<string[]>([]);
   let cellWidth = $state(CELL_WIDTH.initial);
-  let tagInput: TagInput;
-  let grid: Grid | undefined = $state();
+  let tagInput: TagInput | undefined = $state();
+  let searchGrid: Grid | undefined = $state();
+  let favoritesGrid: Grid | undefined = $state();
+  /** The grid the viewer was opened from, to close back into. */
+  let openedFrom: Grid | undefined;
   let signInSheet: SignInSheet;
   /** The thumbnail that carries the viewer's transition name, while it should. */
   let transitionId = $state<number | null>(null);
@@ -42,12 +47,13 @@
     }).finished;
   }
 
-  async function open(post: Post) {
+  async function open(list: PostList, from: Grid | undefined, post: Post) {
+    openedFrom = from;
     transitionId = post.id;
     await tick();
     await transition(async () => {
       transitionId = null;
-      openPost(post.id);
+      openPost(list, post.id);
     });
   }
 
@@ -56,7 +62,7 @@
     await transition(async () => {
       closeViewer();
       if (id === undefined) return;
-      await grid?.reveal(id);
+      await openedFrom?.reveal(id);
       transitionId = id;
     });
     transitionId = null;
@@ -71,13 +77,14 @@
     if (commandK || slash) {
       event.preventDefault();
       view = "search";
-      tagInput.focus();
+      // The field only exists on the search screen, so it may need a render first.
+      tick().then(() => tagInput?.focus());
     }
   }
 
   function addTag(tag: string) {
     if (!tags.includes(tag)) tags = [...tags, tag];
-    tagInput.focus();
+    tagInput?.focus();
   }
 
   function run(next: string[]) {
@@ -85,8 +92,13 @@
     startSearch(next.join(" "));
   }
 
+  const activeGrid = $derived(view === "favorites" ? favoritesGrid : searchGrid);
+  const showsGrid = $derived(
+    (view === "search" && tagSearch.query !== null) || (view === "favorites" && favorites.query !== null),
+  );
+
   // Favorites and votes in the results belong to whoever is signed in, so a change of account
-  // reloads the search.
+  // reloads the search and the favorites.
   const signedInAs = $derived.by(() => {
     const current = account();
     return current.state === "signedIn" ? current.name : null;
@@ -95,11 +107,19 @@
   $effect(() => {
     const now = signedInAs;
     untrack(() => {
-      if (previousAccount !== undefined && previousAccount !== now && search.query !== null) {
-        startSearch(search.query);
+      if (previousAccount !== undefined && previousAccount !== now) {
+        if (tagSearch.query !== null) startSearch(tagSearch.query);
+        if (now !== null && favorites.query !== null) startFavorites();
       }
       previousAccount = now;
     });
+  });
+
+  onSignInNeeded(() => signInSheet.open());
+
+  // The favorites load the first time their screen opens while signed in.
+  $effect(() => {
+    if (view === "favorites" && signedInAs !== null && untrack(() => favorites.query) === null) startFavorites();
   });
 </script>
 
@@ -110,9 +130,13 @@
 
   <main class="my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg bg-panel shadow-panel">
     <header class="flex min-h-11 shrink-0 items-center gap-2 px-3 py-1" data-tauri-drag-region>
-      <TagInput bind:this={tagInput} bind:tags onsubmit={run} />
-      <SortMenu {tags} onchange={run} />
-      {#if search.query !== null}
+      {#if view === "favorites"}
+        <h1 class="px-1 text-base font-strong">{m().nav.favorites}</h1>
+      {:else}
+        <TagInput bind:this={tagInput} bind:tags onsubmit={run} />
+        <SortMenu {tags} onchange={run} />
+      {/if}
+      {#if showsGrid}
         <label class="ml-auto flex shrink-0 items-center gap-2 text-dim" title={m().search.size}>
           <ZoomIn size={15} strokeWidth={1.75} />
           <span class="sr-only">{m().search.size}</span>
@@ -123,20 +147,50 @@
             max={CELL_WIDTH.max}
             step="10"
             value={cellWidth}
-            oninput={(event) => grid?.resize(Number(event.currentTarget.value))}
+            oninput={(event) => activeGrid?.resize(Number(event.currentTarget.value))}
           />
         </label>
       {/if}
     </header>
 
-    <section class="min-h-0 flex-1">
-      {#if view === "search"}
-        {#if search.query === null}
+    <!-- Both grids stay mounted, so each screen keeps its scroll position. -->
+    <section class="relative min-h-0 flex-1">
+      <div class={["absolute inset-0", view !== "search" && "invisible"]}>
+        {#if tagSearch.query === null}
           <div class="h-full overflow-auto"><EmptySearch onpick={addTag} /></div>
         {:else}
-          <Grid bind:this={grid} bind:cellWidth {transitionId} onopen={open} />
+          <Grid
+            bind:this={searchGrid}
+            list={tagSearch}
+            bind:cellWidth
+            {transitionId}
+            empty={m().search.noResults}
+            onopen={(post) => open(tagSearch, searchGrid, post)}
+          />
         {/if}
-      {/if}
+      </div>
+      <div class={["absolute inset-0", view !== "favorites" && "invisible"]}>
+        {#if signedInAs === null}
+          <div class="grid h-full place-items-center px-8 pb-[12vh] text-center">
+            <div class="flex flex-col items-center gap-3">
+              <p class="text-dim">{m().favorites.signedOut}</p>
+              <button
+                class="h-8 rounded-md bg-focus px-3.5 font-medium text-panel"
+                onclick={() => signInSheet.open()}>{m().account.signIn}</button
+              >
+            </div>
+          </div>
+        {:else if favorites.query !== null}
+          <Grid
+            bind:this={favoritesGrid}
+            list={favorites}
+            bind:cellWidth
+            {transitionId}
+            empty={m().favorites.empty}
+            onopen={(post) => open(favorites, favoritesGrid, post)}
+          />
+        {/if}
+      </div>
     </section>
   </main>
 </div>
@@ -146,3 +200,4 @@
 {/if}
 
 <SignInSheet bind:this={signInSheet} />
+<Toasts />

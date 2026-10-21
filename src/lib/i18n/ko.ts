@@ -1,3 +1,4 @@
+import { isMac } from "../platform";
 import type { Messages } from "./en";
 
 const ko: Messages = {
@@ -52,6 +53,29 @@ const ko: Messages = {
       credentialStore: "시스템 자격 증명 저장소를 쓰지 못했습니다.",
       other: "문제가 생겼습니다. 다시 시도하세요.",
     },
+  },
+  actions: {
+    favorite: "즐겨찾기",
+    unfavorite: "즐겨찾기 해제",
+    voteUp: "추천",
+    voteDown: "비추천",
+    download: "다운로드",
+    downloading: (percent) => `저장 중 ${percent}%`,
+    favoriteFailed: "즐겨찾기를 바꾸지 못했습니다.",
+    voteFailed: "투표하지 못했습니다.",
+    downloadFailed: "파일을 저장하지 못했습니다.",
+    downloadError: {
+      network: "연결을 확인하세요.",
+      storage: "다운로드 폴더에 쓰지 못했습니다.",
+      other: "다시 시도하세요.",
+    },
+    saved: (name) => `${name} 저장됨`,
+    alreadySaved: (name) => `${name}은(는) 이미 저장되어 있습니다`,
+    reveal: isMac ? "Finder에서 보기" : "탐색기에서 보기",
+  },
+  favorites: {
+    signedOut: "로그인하면 내 즐겨찾기를 볼 수 있습니다.",
+    empty: "아직 즐겨찾기가 없습니다.",
   },
   viewer: {
     close: "닫기",
