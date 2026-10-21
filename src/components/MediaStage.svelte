@@ -1,6 +1,7 @@
 <script lang="ts">
   import { CircleAlert, EyeOff, Trash2 } from "@lucide/svelte";
   import { untrack } from "svelte";
+  import { routeCount } from "../lib/connection.svelte";
   import { m } from "../lib/i18n/index.svelte";
   import { mediaUrl, viewerMedia } from "../lib/media";
   import type { Post } from "../lib/posts";
@@ -44,6 +45,15 @@
     });
     observer.observe(stage);
     return () => observer.disconnect();
+  });
+
+  // A change of route cuts off whatever was loading; the new route can serve it.
+  $effect(() => {
+    routeCount();
+    untrack(() => {
+      videoFailed = false;
+      if (original === "failed") original = "idle";
+    });
   });
 
   // Zooming past what the display image holds brings in the original.
@@ -132,6 +142,7 @@
   onpointercancel={onpointerup}
   {ondblclick}
 >
+  {#key routeCount()}
   {#if media.kind === "image" && shown}
     <img
       src={mediaUrl(shown)}
@@ -172,4 +183,5 @@
       </p>
     </div>
   {/if}
+  {/key}
 </div>

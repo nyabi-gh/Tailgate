@@ -1,5 +1,7 @@
 <script lang="ts">
   import { EyeOff, Heart, ImageOff, Play, Trash2 } from "@lucide/svelte";
+  import { untrack } from "svelte";
+  import { routeCount } from "../lib/connection.svelte";
   import { m } from "../lib/i18n/index.svelte";
   import { mediaUrl } from "../lib/media";
   import type { Post } from "../lib/posts";
@@ -33,6 +35,12 @@
   // Per source, so a failed preview does not hide the sample when the rows grow.
   let failedSource = $state<string | null>(null);
   const failed = $derived(source !== null && failedSource === source);
+
+  // A new route may serve what the old one failed or cut off.
+  $effect(() => {
+    routeCount();
+    untrack(() => (failedSource = null));
+  });
 
   function duration(seconds: number): string {
     const whole = Math.round(seconds);

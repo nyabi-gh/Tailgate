@@ -4,6 +4,7 @@
   import { connection } from "../lib/connection.svelte";
   import { m } from "../lib/i18n/index.svelte";
   import { browseViews, type BrowseView, type View } from "../lib/views";
+  import ConnectionStatus from "./ConnectionStatus.svelte";
 
   let {
     current,
@@ -47,29 +48,7 @@
       title={status.state === "failed" ? m().connection.failure[status.code] : undefined}
       onclick={() => onselect("settings")}
     >
-      {#if status.state === "failed"}
-        <CircleAlert size={16} strokeWidth={1.75} class="shrink-0" />
-      {:else}
-        <span
-          class={[
-            "mx-[5px] size-1.5 shrink-0 rounded-full",
-            status.state === "connecting" && "border border-faint",
-            status.state === "direct" && "bg-faint",
-            status.state === "tunnel" && "bg-focus",
-          ]}
-        ></span>
-      {/if}
-      <span class="truncate">
-        {#if status.state === "direct"}
-          {m().connection.direct}
-        {:else if status.state === "connecting"}
-          {m().connection.connecting}
-        {:else if status.state === "tunnel"}
-          {m().connection.tunnel(status.relay)}
-        {:else}
-          {m().connection.failed}
-        {/if}
-      </span>
+      <ConnectionStatus />
     </button>
 
     <div class="flex items-center gap-1">

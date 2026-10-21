@@ -3,6 +3,7 @@
   import { tick, untrack } from "svelte";
   import EmptySearch from "./components/EmptySearch.svelte";
   import Grid from "./components/Grid.svelte";
+  import Settings from "./components/Settings.svelte";
   import SignInSheet from "./components/SignInSheet.svelte";
   import Sidebar from "./components/Sidebar.svelte";
   import SortMenu from "./components/SortMenu.svelte";
@@ -130,8 +131,8 @@
 
   <main class="my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg bg-panel shadow-panel">
     <header class="flex min-h-11 shrink-0 items-center gap-2 px-3 py-1" data-tauri-drag-region>
-      {#if view === "favorites"}
-        <h1 class="px-1 text-base font-strong">{m().nav.favorites}</h1>
+      {#if view === "favorites" || view === "settings"}
+        <h1 class="px-1 text-base font-strong">{m().nav[view]}</h1>
       {:else}
         <TagInput bind:this={tagInput} bind:tags onsubmit={run} />
         <SortMenu {tags} onchange={run} />
@@ -191,6 +192,9 @@
           />
         {/if}
       </div>
+      {#if view === "settings"}
+        <div class="absolute inset-0 overflow-y-auto"><Settings onsignin={() => signInSheet.open()} /></div>
+      {/if}
     </section>
   </main>
 </div>

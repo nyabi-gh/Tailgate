@@ -1,3 +1,4 @@
+import type { SettingsChangeError } from "./connection.svelte";
 import { m } from "./i18n/index.svelte";
 import type { ApiErrorCode } from "./posts";
 
@@ -14,4 +15,9 @@ export function apiErrorMessage(code: ApiErrorCode): string {
     default:
       return messages.other;
   }
+}
+
+export function settingsChangeMessage(failure: SettingsChangeError): string {
+  const messages = m().settings.error;
+  return failure.code === "invalidConfig" ? messages.invalidConfig(failure.key, failure.missing) : messages[failure.code];
 }
