@@ -13,7 +13,7 @@ pub mod tunnel;
 
 use std::sync::Arc;
 
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tokio::sync::watch;
 
 use account::Account;
@@ -62,6 +62,11 @@ pub fn run() {
             commands::set_browse_settings,
             commands::quit
         ])
+        .on_window_event(|window, event| {
+            if let WindowEvent::Focused(true) = event {
+                refresh_blacklist(window.app_handle());
+            }
+        })
         .register_asynchronous_uri_scheme_protocol(media::SCHEME, |context, request, responder| {
             media::handle(context.app_handle(), request, responder)
         })
@@ -121,6 +126,25 @@ fn forward<T: Clone + serde::Serialize + Send + Sync + 'static>(
             if let Err(error) = app.emit(event, value) {
                 tracing::warn!("could not send {event} to the UI: {error}");
             }
+        }
+    });
+}
+
+/// The user may have changed the blacklist on the site while the window was in the background.
+fn refresh_blacklist(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let searches = Arc::clone(app.state::<Arc<search::Searches>>().inner());
+        let api = Arc::clone(app.state::<Arc<Api>>().inner());
+        match searches.refresh_blacklist(&api).await {
+            Ok(None) => {}
+            Ok(Some(change)) => {
+                tracing::info!("the blacklist changed on e621");
+                if let Err(error) = app.emit("blacklist-changed", change) {
+                    tracing::warn!("could not send blacklist-changed to the UI: {error}");
+                }
+            }
+            Err(error) => tracing::warn!("could not refresh the blacklist: {error}"),
         }
     });
 }

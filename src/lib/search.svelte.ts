@@ -1,4 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { BlacklistMarks } from "./blacklistMarks";
 import { canLoadRemote } from "./connection.svelte";
 import { apiErrorCode, type ApiErrorCode, type Post, type TagCategory } from "./posts";
 
@@ -6,8 +8,15 @@ import { apiErrorCode, type ApiErrorCode, type Post, type TagCategory } from "./
 type SearchPage = {
   posts: Post[];
   blacklisted: number[];
+  blacklistGeneration: number;
   done: boolean;
   categories: Record<string, TagCategory>;
+};
+
+/** Mirrors `BlacklistChange` in src-tauri/src/search.rs. */
+type BlacklistChange = {
+  generation: number;
+  searches: { id: number; blacklisted: number[] }[];
 };
 
 /**
@@ -22,7 +31,8 @@ export class PostList {
   query = $state<string | null>(null);
   // Replaced, never mutated: a deep proxy over thousands of posts would only cost.
   #posts = $state.raw<Post[]>([]);
-  #blacklisted = $state.raw(new Set<number>());
+  #marks = new BlacklistMarks();
+  #blacklisted = $state.raw(this.#marks.ids);
   revealed = $state(false);
   done = $state(false);
   loading = $state(false);
@@ -67,7 +77,7 @@ export class PostList {
       const page = await invoke<SearchPage>("search_next", { id: current });
       if (current !== this.#id) return;
       this.#posts = [...this.#posts, ...page.posts];
-      if (page.blacklisted.length > 0) this.#blacklisted = new Set([...this.#blacklisted, ...page.blacklisted]);
+      if (this.#marks.addPage(page.blacklistGeneration, page.blacklisted)) this.#blacklisted = this.#marks.ids;
       this.done = page.done;
       rememberCategories(page.categories);
     } catch (cause) {
@@ -88,6 +98,14 @@ export class PostList {
     this.revealed = !this.revealed;
   }
 
+  /** A refreshed blacklist, applied to the posts already loaded. */
+  applyBlacklist(change: BlacklistChange) {
+    const mine = change.searches.find((search) => search.id === this.#id);
+    if (mine !== undefined && this.#marks.applyRefresh(change.generation, mine.blacklisted)) {
+      this.#blacklisted = this.#marks.ids;
+    }
+  }
+
   update(id: number, change: (post: Post) => Post) {
     if (this.#posts.some((post) => post.id === id)) {
       this.#posts = this.#posts.map((post) => (post.id === id ? change(post) : post));
@@ -98,7 +116,8 @@ export class PostList {
     this.#id = null;
     this.query = query;
     this.#posts = [];
-    this.#blacklisted = new Set();
+    this.#marks = new BlacklistMarks();
+    this.#blacklisted = this.#marks.ids;
     this.revealed = false;
     this.done = false;
     this.error = null;
@@ -115,6 +134,14 @@ export function startSearch(tags: string) {
 
 export function startFavorites() {
   return favorites.start("", () => invoke<number>("search_start_favorites"));
+}
+
+/** Rust asks e621 for the blacklist again when the window comes back to the front. */
+export async function watchBlacklist() {
+  await listen<BlacklistChange>("blacklist-changed", ({ payload }) => {
+    tagSearch.applyBlacklist(payload);
+    favorites.applyBlacklist(payload);
+  });
 }
 
 /** A change to a post (a favorite, a vote) shows on every screen that lists it. */

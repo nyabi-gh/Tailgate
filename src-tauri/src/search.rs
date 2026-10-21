@@ -6,10 +6,11 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
+    time::Duration,
 };
 
 use serde::Serialize;
-use tokio::sync::Mutex;
+use tokio::{sync::Mutex, time::Instant};
 
 use crate::{
     api::{
@@ -23,6 +24,9 @@ use crate::{
 /// call (one second each under the throttle); then the empty result goes back and the grid
 /// asks again as it scrolls.
 const MAX_PAGES_PER_CALL: usize = 5;
+/// How long a fetched blacklist stands before the window coming back to the front asks e621
+/// again: the user may have changed it on the site meanwhile.
+const BLACKLIST_REFRESH: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -30,6 +34,9 @@ pub struct SearchPage {
     /// Blacklisted posts included: the UI hides them until asked to show them.
     pub posts: Vec<Post>,
     pub blacklisted: Vec<u64>,
+    /// Which blacklist marked them, so the UI can tell a page marked before a refresh it has
+    /// already applied (see [`BlacklistChange`]).
+    pub blacklist_generation: u64,
     pub done: bool,
     /// Categories of the searched tags that this page's posts reveal, so the search field can
     /// color them without asking e621.
@@ -63,19 +70,41 @@ struct OpenSearch {
     screen: Screen,
     tags: Vec<String>,
     pages: Mutex<PostSearch>,
+    /// Every post handed to the UI, so a changed blacklist can mark them anew.
+    loaded: std::sync::Mutex<Vec<Post>>,
 }
 
 /// The blacklist of the credentials it was fetched with, so signing in or out fetches anew.
 struct CachedBlacklist {
     credentials: Option<Arc<Credentials>>,
+    source: String,
     blacklist: Arc<Blacklist>,
+    generation: u64,
+    checked_at: Instant,
+}
+
+/// What a refreshed blacklist changed: every open search's blacklisted posts, all of them.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlacklistChange {
+    pub generation: u64,
+    pub searches: Vec<SearchBlacklisted>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchBlacklisted {
+    pub id: u64,
+    pub blacklisted: Vec<u64>,
 }
 
 #[derive(Default)]
 pub struct Searches {
     next_id: AtomicU64,
     open: std::sync::Mutex<HashMap<u64, Arc<OpenSearch>>>,
+    /// Held while a page is marked and recorded, so a refresh never falls between the two.
     blacklist: Mutex<Option<CachedBlacklist>>,
+    blacklist_generation: AtomicU64,
 }
 
 impl Searches {
@@ -84,6 +113,7 @@ impl Searches {
             screen: Screen::Search,
             tags: tags.split_whitespace().map(str::to_owned).collect(),
             pages: Mutex::new(PostSearch::new(tags)),
+            loaded: std::sync::Mutex::default(),
         })
     }
 
@@ -93,6 +123,7 @@ impl Searches {
             screen: Screen::Favorites,
             tags: Vec::new(),
             pages: Mutex::new(PostSearch::favorites()),
+            loaded: std::sync::Mutex::default(),
         })
     }
 
@@ -113,8 +144,12 @@ impl Searches {
             .get(&id)
             .cloned()
             .ok_or(SearchError::Closed(ClosedSearch::Closed))?;
+        let mut cached = self.blacklist.lock().await;
         // Before any post is returned, so none slips through unfiltered.
-        let blacklist = self.blacklist(api).await.map_err(SearchError::Api)?;
+        let (blacklist, generation) = self
+            .current_blacklist(&mut cached, api)
+            .await
+            .map_err(SearchError::Api)?;
         let mut pages = search.pages.lock().await;
         let mut posts = Vec::new();
         let mut blacklisted = Vec::new();
@@ -142,28 +177,94 @@ impl Searches {
                 break;
             }
         }
+        search
+            .loaded
+            .lock()
+            .expect("loaded posts lock poisoned")
+            .extend(posts.iter().cloned());
         Ok(SearchPage {
             categories: categories(&search.tags, &posts),
             done: pages.is_done(),
             blacklisted,
+            blacklist_generation: generation,
             posts,
         })
     }
 
-    async fn blacklist(&self, api: &Api) -> Result<Arc<Blacklist>, ApiError> {
-        let mut cached = self.blacklist.lock().await;
+    /// The blacklist for the API's current credentials, fetched when there is none for them yet.
+    async fn current_blacklist(
+        &self,
+        cached: &mut Option<CachedBlacklist>,
+        api: &Api,
+    ) -> Result<(Arc<Blacklist>, u64), ApiError> {
         let credentials = api.credentials();
         if let Some(cached) = cached.as_ref()
             && same_credentials(cached.credentials.as_ref(), credentials.as_ref())
         {
-            return Ok(Arc::clone(&cached.blacklist));
+            return Ok((Arc::clone(&cached.blacklist), cached.generation));
         }
-        let blacklist = Arc::new(Blacklist::parse(&api.blacklist().await?));
+        let source = api.blacklist().await?;
+        let blacklist = Arc::new(Blacklist::parse(&source));
+        let generation = self.blacklist_generation.fetch_add(1, Ordering::Relaxed) + 1;
         *cached = Some(CachedBlacklist {
             credentials,
+            source,
             blacklist: Arc::clone(&blacklist),
+            generation,
+            checked_at: Instant::now(),
         });
-        Ok(blacklist)
+        Ok((blacklist, generation))
+    }
+
+    /// Asks e621 for the blacklist again if it was last asked [`BLACKLIST_REFRESH`] ago or more,
+    /// and when it changed, marks the posts every open search has loaded anew. Before the first
+    /// page, or after the credentials changed, there is nothing to refresh: the next page fetches
+    /// the blacklist it needs.
+    pub async fn refresh_blacklist(&self, api: &Api) -> Result<Option<BlacklistChange>, ApiError> {
+        let mut cached = self.blacklist.lock().await;
+        let Some(current) = cached.as_mut() else {
+            return Ok(None);
+        };
+        if !same_credentials(current.credentials.as_ref(), api.credentials().as_ref())
+            || current.checked_at.elapsed() < BLACKLIST_REFRESH
+        {
+            return Ok(None);
+        }
+        // Also when the request fails, so an unreachable e621 is not asked on every focus.
+        current.checked_at = Instant::now();
+        let source = api.blacklist().await?;
+        if source == current.source {
+            return Ok(None);
+        }
+        current.blacklist = Arc::new(Blacklist::parse(&source));
+        current.source = source;
+        current.generation = self.blacklist_generation.fetch_add(1, Ordering::Relaxed) + 1;
+
+        let open: Vec<(u64, Arc<OpenSearch>)> = self
+            .open
+            .lock()
+            .expect("searches lock poisoned")
+            .iter()
+            .map(|(id, search)| (*id, Arc::clone(search)))
+            .collect();
+        let searches = open
+            .into_iter()
+            .map(|(id, search)| SearchBlacklisted {
+                id,
+                blacklisted: search
+                    .loaded
+                    .lock()
+                    .expect("loaded posts lock poisoned")
+                    .iter()
+                    .filter(|post| current.blacklist.matches(post))
+                    .map(|post| post.id)
+                    .collect(),
+            })
+            .collect();
+        Ok(Some(BlacklistChange {
+            generation: current.generation,
+            searches,
+        }))
     }
 
     pub fn close(&self, id: u64) {
@@ -401,5 +502,59 @@ mod tests {
                 .count(),
             2
         );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn refreshes_the_blacklist_after_a_while_and_marks_loaded_posts_anew() {
+        let (api, mut received) = api(vec![
+            me(""),
+            ok(&page(1..=100)),
+            me("id:2\nid:150"),
+            ok(&page(101..=200)),
+        ])
+        .await;
+        let searches = Searches::default();
+        let id = searches.start("rabbit");
+        let first = searches.next(&api, id).await.unwrap();
+        assert!(first.blacklisted.is_empty());
+        assert_eq!(searches.refresh_blacklist(&api).await, Ok(None));
+
+        tokio::time::advance(BLACKLIST_REFRESH).await;
+        let change = searches.refresh_blacklist(&api).await.unwrap().unwrap();
+        assert!(change.generation > first.blacklist_generation);
+        assert_eq!(
+            change.searches,
+            [SearchBlacklisted {
+                id,
+                blacklisted: vec![2],
+            }]
+        );
+        let second = searches.next(&api, id).await.unwrap();
+        assert_eq!(second.blacklisted, [150]);
+        assert_eq!(second.blacklist_generation, change.generation);
+
+        let me_requests = std::iter::from_fn(|| received.try_recv().ok())
+            .filter(|request| request.target == "/users/me.json")
+            .count();
+        assert_eq!(me_requests, 2);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_unchanged_blacklist_changes_nothing() {
+        let (api, _received) = api(vec![me("id:1"), ok(&page(1..=100)), me("id:1")]).await;
+        let searches = Searches::default();
+        let id = searches.start("rabbit");
+        searches.next(&api, id).await.unwrap();
+        tokio::time::advance(BLACKLIST_REFRESH).await;
+        assert_eq!(searches.refresh_blacklist(&api).await, Ok(None));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn nothing_is_refreshed_before_the_first_page() {
+        let (api, mut received) = api(Vec::new()).await;
+        let searches = Searches::default();
+        tokio::time::advance(BLACKLIST_REFRESH).await;
+        assert_eq!(searches.refresh_blacklist(&api).await, Ok(None));
+        assert!(received.try_recv().is_err());
     }
 }
