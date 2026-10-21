@@ -12,6 +12,8 @@
     height,
     large,
     blacklisted,
+    transitionName,
+    onopen,
   }: {
     post: Post;
     x: number;
@@ -20,6 +22,9 @@
     height: number;
     large: boolean;
     blacklisted: boolean;
+    /** Set on the thumbnail the viewer opens from or closes to, so the two morph. */
+    transitionName: string | undefined;
+    onopen: () => void;
   } = $props();
 
   // The 256px-wide preview looks soft in large cells on a 2x screen; the 850px sample is several
@@ -37,8 +42,11 @@
   const badge = "flex h-5 items-center gap-1 rounded-sm bg-window/80 px-1.5 text-xs font-medium text-ink";
 </script>
 
-<div
+<button
   class="absolute overflow-hidden bg-raised"
+  aria-label="#{post.id}"
+  style:view-transition-name={transitionName}
+  onclick={onopen}
   style:left="{x}px"
   style:top="{y}px"
   style:width="{width}px"
@@ -78,4 +86,4 @@
       <span class={badge}>GIF</span>
     {/if}
   </div>
-</div>
+</button>

@@ -7,7 +7,7 @@
     "core:window:allow-start-dragging",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://e621.net/*" }]
+      "allow": [{ "url": "https://*" }, { "url": "http://*" }]
     }
   ]
 }

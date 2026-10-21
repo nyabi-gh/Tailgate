@@ -5,11 +5,15 @@
   import { m } from "../lib/i18n/index.svelte";
   import { CELL_WIDTH, cellPosition, grid, rowOf, visibleRange } from "../lib/layout";
   import { isMac } from "../lib/platform";
-  import type { ApiErrorCode } from "../lib/posts";
+  import type { ApiErrorCode, Post } from "../lib/posts";
   import { loadMore, retry, search, toggleRevealed } from "../lib/search.svelte";
   import Thumb from "./Thumb.svelte";
 
-  let { cellWidth = $bindable() }: { cellWidth: number } = $props();
+  let {
+    cellWidth = $bindable(),
+    transitionId,
+    onopen,
+  }: { cellWidth: number; transitionId: number | null; onopen: (post: Post) => void } = $props();
 
   /** From this cell width on, thumbnails use the sample instead of the preview. */
   const LARGE_CELL_WIDTH = 240;
@@ -61,6 +65,19 @@
   });
 
   /** Keeps the post at the top of the view in place while the cells change size. */
+  /** Scrolls the post into view if it is not, and waits until its thumbnail is rendered. */
+  export async function reveal(id: number) {
+    const index = search.posts.findIndex((post) => post.id === id);
+    if (index < 0) return;
+    const pitch = layout.cellHeight + layout.gap;
+    const top = rowOf(layout, index) * pitch + PADDING;
+    if (top < scroller.scrollTop || top + layout.cellHeight > scroller.scrollTop + viewport) {
+      scroller.scrollTop = top - (viewport - layout.cellHeight) / 2;
+      scrollTop = scroller.scrollTop;
+    }
+    await tick();
+  }
+
   export async function resize(next: number) {
     const [anchor] = visibleRange(layout, search.posts.length, scrollTop - PADDING, scrollTop - PADDING);
     cellWidth = Math.round(Math.min(CELL_WIDTH.max, Math.max(CELL_WIDTH.min, next)));
@@ -112,6 +129,8 @@
           height={layout.cellHeight}
           large={cellWidth >= LARGE_CELL_WIDTH}
           blacklisted={search.isBlacklisted(post)}
+          transitionName={transitionId === post.id ? "post-media" : undefined}
+          onopen={() => onopen(post)}
         />
       {/each}
     </div>
