@@ -17,6 +17,13 @@ pub use netstack::{NetStack, TcpStream};
 
 /// gotatun re-sends a handshake initiation every 5 s (plus jitter); this leaves room for one retry.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+/// gotatun only rekeys when it sends data, so an idle tunnel never handshakes by itself. Past
+/// WireGuard's Rekey-After-Time the health check handshakes instead, which proves the server
+/// still answers.
+const REKEY_AFTER_TIME: Duration = Duration::from_secs(120);
+const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(5);
+/// Room for about four initiations, each re-sent after 5 s.
+const HEALTH_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Debug, thiserror::Error)]
 pub enum TunnelError {
@@ -32,6 +39,18 @@ pub struct Tunnel {
     stack: Arc<NetStack>,
     device: wg::WgDevice,
     driver: JoinHandle<()>,
+    peer: PublicKey,
+}
+
+/// Why a running tunnel is considered gone.
+#[derive(Debug, thiserror::Error)]
+pub enum TunnelLost {
+    #[error("the VPN server stopped answering handshakes")]
+    Silent,
+    #[error("WireGuard stopped: {0}")]
+    WireGuard(gotatun::device::Error),
+    #[error("WireGuard stopped on an unrecoverable error")]
+    Fatal,
 }
 
 impl Tunnel {
@@ -61,11 +80,14 @@ impl Tunnel {
             stack,
             device,
             driver,
+            peer: PublicKey::from(config.peer_public_key),
         };
 
-        let peer = PublicKey::from(config.peer_public_key);
-        let handshake =
-            tokio::time::timeout(HANDSHAKE_TIMEOUT, tunnel.device.force_handshake(&peer)).await;
+        let handshake = tokio::time::timeout(
+            HANDSHAKE_TIMEOUT,
+            tunnel.device.force_handshake(&tunnel.peer),
+        )
+        .await;
         match handshake {
             Ok(Ok(())) => Ok(tunnel),
             Ok(Err(error)) => {
@@ -81,6 +103,40 @@ impl Tunnel {
 
     pub fn stack(&self) -> &Arc<NetStack> {
         &self.stack
+    }
+
+    /// Resolves once the tunnel can no longer carry traffic (docs/report.md §6.3, rule 5).
+    pub async fn lost(&mut self) -> TunnelLost {
+        loop {
+            tokio::select! {
+                () = self.device.wait() => return TunnelLost::Fatal,
+                () = tokio::time::sleep(HEALTH_CHECK_INTERVAL) => {}
+            }
+            let last_handshake = self
+                .device
+                .read(async |device| {
+                    device
+                        .peers()
+                        .await
+                        .into_iter()
+                        .find(|peer| peer.peer.public_key == self.peer)
+                        .and_then(|peer| peer.stats.last_handshake)
+                })
+                .await;
+            if last_handshake.is_some_and(|age| age < REKEY_AFTER_TIME) {
+                continue;
+            }
+            match tokio::time::timeout(
+                HEALTH_HANDSHAKE_TIMEOUT,
+                self.device.force_handshake(&self.peer),
+            )
+            .await
+            {
+                Ok(Ok(())) => tracing::debug!("tunnel health check: handshake completed"),
+                Ok(Err(error)) => return TunnelLost::WireGuard(error),
+                Err(_) => return TunnelLost::Silent,
+            }
+        }
     }
 
     pub async fn stop(self) {
