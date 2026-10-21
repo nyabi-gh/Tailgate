@@ -284,4 +284,59 @@ mod tests {
         let requests = drain(&mut received);
         assert_eq!(requests[0].target, requests[1].target);
     }
+
+    #[tokio::test(start_paused = true)]
+    async fn sends_favorites_and_votes() {
+        let (api, mut received) = fake_api(vec![
+            ok(&json!({ "post_id": 7, "favorite_count": 3 })),
+            ok(&json!({ "post_id": 7, "favorite_count": 2 })),
+            ok(&json!({ "score": 5, "up": 6, "down": -1, "our_score": 1 })),
+            ok(&json!({ "score": 4, "up": 5, "down": -1, "our_score": 0 })),
+        ])
+        .await;
+        assert_eq!(api.favorite(7).await.unwrap().favorite_count, 3);
+        assert_eq!(api.unfavorite(7).await.unwrap().favorite_count, 2);
+        assert_eq!(api.vote(7, true).await.unwrap().our_score, 1);
+        assert_eq!(api.vote(7, true).await.unwrap().our_score, 0);
+        let requests = drain(&mut received);
+        let calls: Vec<(&str, &str, &str)> = requests
+            .iter()
+            .map(|request| {
+                (
+                    request.method.as_str(),
+                    request.target.as_str(),
+                    request.body.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            calls,
+            [
+                ("POST", "/favorites.json", "post_id=7"),
+                ("DELETE", "/favorites/7.json", ""),
+                ("POST", "/posts/7/votes.json", "score=1"),
+                ("POST", "/posts/7/votes.json", "score=1"),
+            ]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn pages_favorites_by_number() {
+        let (api, mut received) = fake_api(vec![ok(&posts(1..=100)), ok(&posts([0]))]).await;
+        let mut search = PostSearch::favorites();
+        search.next_page(&api).await.unwrap();
+        search.next_page(&api).await.unwrap();
+        assert!(search.is_done());
+        let targets: Vec<String> = drain(&mut received)
+            .into_iter()
+            .map(|request| request.target)
+            .collect();
+        assert_eq!(
+            targets,
+            [
+                "/favorites.json?limit=100&page=1",
+                "/favorites.json?limit=100&page=2"
+            ]
+        );
+    }
 }

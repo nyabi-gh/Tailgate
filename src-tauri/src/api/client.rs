@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use reqwest::{StatusCode, header};
+use reqwest::{Method, StatusCode, header};
 use serde::de::DeserializeOwned;
 use tokio::{
     sync::{Mutex, watch},
@@ -72,15 +72,39 @@ impl Client {
         self.rejected.subscribe()
     }
 
-    /// With the current credentials. A 401 to them is also published to
-    /// [`Client::watch_rejections`], unless they were replaced while the request was out.
     pub(super) async fn get<T: DeserializeOwned>(
         &self,
         path: &str,
         query: &[(&str, &str)],
     ) -> Result<T, ApiError> {
+        self.call(Method::GET, path, query, &[]).await
+    }
+
+    pub(super) async fn post<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        form: &[(&str, &str)],
+    ) -> Result<T, ApiError> {
+        self.call(Method::POST, path, &[], form).await
+    }
+
+    pub(super) async fn delete<T: DeserializeOwned>(&self, path: &str) -> Result<T, ApiError> {
+        self.call(Method::DELETE, path, &[], &[]).await
+    }
+
+    /// With the current credentials. A 401 to them is also published to
+    /// [`Client::watch_rejections`], unless they were replaced while the request was out.
+    async fn call<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        query: &[(&str, &str)],
+        form: &[(&str, &str)],
+    ) -> Result<T, ApiError> {
         let credentials = self.credentials();
-        let result = self.get_as(path, query, credentials.as_deref()).await;
+        let result = self
+            .send(method, path, query, form, credentials.as_deref())
+            .await;
         if let (Err(ApiError::Unauthorized), Some(credentials)) = (&result, credentials)
             && self
                 .credentials()
@@ -99,11 +123,24 @@ impl Client {
         query: &[(&str, &str)],
         credentials: Option<&Credentials>,
     ) -> Result<T, ApiError> {
+        self.send(Method::GET, path, query, &[], credentials).await
+    }
+
+    /// 429 and 503 are retried for writes too: e621 turns the request away before acting on it,
+    /// so a retry cannot apply a change twice.
+    async fn send<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        query: &[(&str, &str)],
+        form: &[(&str, &str)],
+        credentials: Option<&Credentials>,
+    ) -> Result<T, ApiError> {
         let mut retries = 0;
         loop {
             self.wait_for_turn().await;
             let response = self
-                .request(path, query, credentials)
+                .request(method.clone(), path, query, form, credentials)
                 .send()
                 .await
                 .map_err(|error| {
@@ -152,19 +189,24 @@ impl Client {
 
     fn request(
         &self,
+        method: Method,
         path: &str,
         query: &[(&str, &str)],
+        form: &[(&str, &str)],
         credentials: Option<&Credentials>,
     ) -> reqwest::RequestBuilder {
         let user_agent = credentials.map_or_else(
             || network::USER_AGENT.to_owned(),
             |credentials| network::user_agent_for(&credentials.username),
         );
-        let request = self
+        let mut request = self
             .http
-            .get(format!("{}{path}", self.base))
+            .request(method, format!("{}{path}", self.base))
             .query(query)
             .header(header::USER_AGENT, user_agent);
+        if !form.is_empty() {
+            request = request.form(form);
+        }
         match credentials {
             Some(credentials) => {
                 request.basic_auth(&credentials.username, Some(&credentials.api_key))

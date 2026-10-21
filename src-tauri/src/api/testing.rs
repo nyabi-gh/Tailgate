@@ -17,9 +17,11 @@ use tokio::{
 #[derive(Debug)]
 pub(crate) struct Received {
     pub(crate) at: Instant,
+    pub(crate) method: String,
     pub(crate) target: String,
     pub(crate) user_agent: String,
     pub(crate) authorization: Option<String>,
+    pub(crate) body: String,
 }
 
 pub(crate) fn json_response(status: &str, body: &str) -> String {
@@ -45,26 +47,38 @@ pub(crate) async fn serve(responses: Vec<String>) -> (String, mpsc::UnboundedRec
             let responses = Arc::clone(&responses);
             let sender = sender.clone();
             tokio::spawn(async move {
-                let mut head = Vec::new();
+                let mut request = Vec::new();
                 let mut buffer = [0; 1024];
-                while !head.ends_with(b"\r\n\r\n") {
+                let end = loop {
+                    if let Some(at) = request.windows(4).position(|bytes| bytes == b"\r\n\r\n") {
+                        break at + 4;
+                    }
                     let read = stream.read(&mut buffer).await.unwrap();
                     assert_ne!(read, 0, "the client closed before finishing its request");
-                    head.extend_from_slice(&buffer[..read]);
-                }
-                let head = String::from_utf8(head).unwrap();
+                    request.extend_from_slice(&buffer[..read]);
+                };
+                let head = String::from_utf8(request[..end].to_vec()).unwrap();
                 let header = |name: &str| {
                     head.lines().find_map(|line| {
                         let (key, value) = line.split_once(": ")?;
                         key.eq_ignore_ascii_case(name).then(|| value.to_owned())
                     })
                 };
+                let length: usize =
+                    header("content-length").map_or(0, |length| length.parse().unwrap());
+                while request.len() < end + length {
+                    let read = stream.read(&mut buffer).await.unwrap();
+                    assert_ne!(read, 0, "the client closed before finishing its body");
+                    request.extend_from_slice(&buffer[..read]);
+                }
                 sender
                     .send(Received {
                         at: Instant::now(),
+                        method: head.split(' ').next().unwrap().to_owned(),
                         target: head.split(' ').nth(1).unwrap().to_owned(),
                         user_agent: header("user-agent").unwrap_or_default(),
                         authorization: header("authorization"),
+                        body: String::from_utf8(request[end..end + length].to_vec()).unwrap(),
                     })
                     .unwrap();
                 let response = responses

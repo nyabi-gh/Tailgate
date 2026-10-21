@@ -176,6 +176,27 @@ pub struct TagSuggestion {
     pub antecedent_name: Option<String>,
 }
 
+/// The reply to adding or removing a favorite.
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Favorited {
+    #[serde(alias = "post_id")]
+    pub post_id: u64,
+    #[serde(alias = "favorite_count")]
+    pub favorite_count: u64,
+}
+
+/// The reply to a vote: the post's score after it, and the user's own vote (-1, 0 or 1).
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Voted {
+    pub score: i64,
+    pub up: i64,
+    pub down: i64,
+    #[serde(alias = "our_score")]
+    pub our_score: i8,
+}
+
 #[derive(Deserialize)]
 pub(super) struct RawPosts {
     pub posts: Vec<RawPost>,

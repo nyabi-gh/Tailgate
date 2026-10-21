@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use super::{
     Api, ApiError, Credentials,
-    models::{Post, RawPostEnvelope, RawPosts, RawUser, TagSuggestion, User},
+    models::{Favorited, Post, RawPostEnvelope, RawPosts, RawUser, TagSuggestion, User, Voted},
 };
 
 pub const PAGE_SIZE: usize = 100;
@@ -44,6 +44,35 @@ impl Api {
             .await
     }
 
+    pub async fn favorite(&self, id: u64) -> Result<Favorited, ApiError> {
+        self.client
+            .post("favorites.json", &[("post_id", &id.to_string())])
+            .await
+    }
+
+    pub async fn unfavorite(&self, id: u64) -> Result<Favorited, ApiError> {
+        self.client.delete(&format!("favorites/{id}.json")).await
+    }
+
+    /// Voting the same way again takes the vote back, as on the site; the reply says where it
+    /// ended up.
+    pub async fn vote(&self, id: u64, up: bool) -> Result<Voted, ApiError> {
+        let score = if up { "1" } else { "-1" };
+        self.client
+            .post(&format!("posts/{id}/votes.json"), &[("score", score)])
+            .await
+    }
+
+    /// The signed-in user's favorites, most recently added first.
+    async fn favorites(&self, page: u32) -> Result<Vec<Post>, ApiError> {
+        let (limit, page) = (PAGE_SIZE.to_string(), page.to_string());
+        let raw: RawPosts = self
+            .client
+            .get("favorites.json", &[("limit", &limit), ("page", &page)])
+            .await?;
+        Ok(raw.posts.into_iter().map(Post::from).collect())
+    }
+
     async fn posts(&self, tags: &str, page: Option<&str>) -> Result<Vec<Post>, ApiError> {
         let limit = PAGE_SIZE.to_string();
         let mut query = vec![("tags", tags), ("limit", limit.as_str())];
@@ -55,10 +84,11 @@ impl Api {
     }
 }
 
-/// One tag search, read page by page. Keeps the ids it has returned so a post that moves to a
-/// later page while paging by number is not shown twice.
+/// One tag search, or the user's favorites, read page by page. Keeps the ids it has returned so
+/// a post that moves to a later page while paging by number is not shown twice.
 pub struct PostSearch {
-    tags: String,
+    /// `None` for the favorites.
+    tags: Option<String>,
     next: Option<Page>,
     seen: HashSet<u64>,
 }
@@ -84,7 +114,16 @@ impl PostSearch {
             } else {
                 Page::First
             }),
-            tags,
+            tags: Some(tags),
+            seen: HashSet::new(),
+        }
+    }
+
+    /// Favorites only page by number, in the order they were added.
+    pub fn favorites() -> Self {
+        Self {
+            tags: None,
+            next: Some(Page::Number(1)),
             seen: HashSet::new(),
         }
     }
@@ -104,12 +143,18 @@ impl PostSearch {
         let Some(page) = self.next else {
             return Ok(Vec::new());
         };
-        let param = match page {
-            Page::First => None,
-            Page::Before(id) => Some(format!("b{id}")),
-            Page::Number(number) => Some(number.to_string()),
+        let posts = match (&self.tags, page) {
+            (None, Page::Number(number)) => api.favorites(number).await?,
+            (None, _) => unreachable!("favorites page by number"),
+            (Some(tags), page) => {
+                let param = match page {
+                    Page::First => None,
+                    Page::Before(id) => Some(format!("b{id}")),
+                    Page::Number(number) => Some(number.to_string()),
+                };
+                api.posts(tags, param.as_deref()).await?
+            }
         };
-        let posts = api.posts(&self.tags, param.as_deref()).await?;
         self.next = following(page, &posts);
         Ok(posts
             .into_iter()
