@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { CircleAlert } from "@lucide/svelte";
+  import { CircleAlert, Eye, EyeOff } from "@lucide/svelte";
   import { tick } from "svelte";
   import { canLoadRemote } from "../lib/connection.svelte";
   import { m } from "../lib/i18n/index.svelte";
   import { CELL_WIDTH, cellPosition, grid, rowOf, visibleRange } from "../lib/layout";
   import { isMac } from "../lib/platform";
   import type { ApiErrorCode } from "../lib/posts";
-  import { loadMore, retry, search } from "../lib/search.svelte";
+  import { loadMore, retry, search, toggleRevealed } from "../lib/search.svelte";
   import Thumb from "./Thumb.svelte";
 
   let { cellWidth = $bindable() }: { cellWidth: number } = $props();
@@ -84,11 +84,14 @@
   }
 </script>
 
+<div class="relative h-full">
 <div bind:this={scroller} class="h-full overflow-y-auto" onscroll={() => (scrollTop = scroller.scrollTop)}>
   {#if search.posts.length === 0}
     <div class="grid h-full place-items-center px-8 pb-[12vh] text-dim">
       {#if search.error !== null}
         {@render failure(search.error)}
+      {:else if search.done && search.hiddenCount > 0}
+        <p>{m().search.allHidden}</p>
       {:else if search.done}
         <p>{m().search.noResults}</p>
       {:else if !canLoadRemote()}
@@ -108,6 +111,7 @@
           width={layout.cellWidth}
           height={layout.cellHeight}
           large={cellWidth >= LARGE_CELL_WIDTH}
+          blacklisted={search.isBlacklisted(post)}
         />
       {/each}
     </div>
@@ -117,6 +121,22 @@
       <p class="pt-4 pb-10 text-center text-dim">{m().search.loading}</p>
     {/if}
   {/if}
+</div>
+
+{#if search.hiddenCount > 0}
+  <button
+    class="absolute right-4 bottom-4 flex h-8 items-center gap-1.5 rounded-full bg-panel px-3.5 font-medium text-ink shadow-panel transition-colors hover:bg-raised"
+    title={search.revealed ? undefined : m().search.revealHint}
+    aria-pressed={search.revealed}
+    onclick={toggleRevealed}
+  >
+    {#if search.revealed}
+      <EyeOff size={15} strokeWidth={1.75} class="text-dim" />{m().search.hideAgain}
+    {:else}
+      <Eye size={15} strokeWidth={1.75} class="text-dim" />{m().search.hidden(search.hiddenCount)}
+    {/if}
+  </button>
+{/if}
 </div>
 
 {#snippet failure(code: ApiErrorCode)}

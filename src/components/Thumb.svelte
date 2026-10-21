@@ -11,7 +11,16 @@
     width,
     height,
     large,
-  }: { post: Post; x: number; y: number; width: number; height: number; large: boolean } = $props();
+    blacklisted,
+  }: {
+    post: Post;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    large: boolean;
+    blacklisted: boolean;
+  } = $props();
 
   // The 256px-wide preview looks soft in large cells on a 2x screen; the 850px sample is several
   // times the download, so it is used only then (docs/report.md §5).
@@ -57,6 +66,9 @@
   {/if}
 
   <div class="absolute top-1.5 right-1.5 flex gap-1">
+    {#if blacklisted}
+      <span class={badge} title={m().search.blacklisted}><EyeOff size={11} strokeWidth={2.25} /></span>
+    {/if}
     {#if post.isFavorited}
       <span class={badge}><Heart size={11} strokeWidth={2.25} class="fill-current" /></span>
     {/if}

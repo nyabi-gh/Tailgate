@@ -26,6 +26,7 @@ export type Post = {
   commentCount: number;
   deleted: boolean;
   pending: boolean;
+  flagged: boolean;
   description: string;
   sources: string[];
   uploader: { id: number; name: string | null };
