@@ -2,6 +2,8 @@ import en, { type Messages } from "./en";
 import ko from "./ko";
 
 export type Locale = "en" | "ko";
+/** What the user picks; mirrors `Language` in src-tauri/src/settings.rs. */
+export type Language = Locale | "system";
 
 const catalogs: Record<Locale, Messages> = { en, ko };
 
@@ -18,6 +20,10 @@ export function currentLocale(): Locale {
 export function setLocale(next: Locale) {
   locale = next;
   document.documentElement.lang = next;
+}
+
+export function useLanguage(language: Language) {
+  setLocale(language === "system" ? systemLocale() : language);
 }
 
 /** Read inside markup as `m().nav.search` so the text re-renders when the locale changes. */

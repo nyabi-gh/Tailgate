@@ -30,6 +30,9 @@ const ko: Messages = {
     },
   },
   settings: {
+    general: "일반",
+    language: "언어",
+    languages: { system: "시스템", en: "English", ko: "한국어" },
     account: "계정",
     e621: "e621",
     notSignedIn: "로그인 안 됨",

@@ -15,7 +15,7 @@ use crate::{
     network::{Connection, ConnectionDetails, Network, SettingsChangeError},
     relays::LocationChoice,
     search::{SearchError, SearchPage, Searches},
-    settings::ConnectionMode,
+    settings::{ConnectionMode, General, Settings},
 };
 
 #[tauri::command]
@@ -198,4 +198,20 @@ pub async fn download(
             }
         })
         .await
+}
+
+#[tauri::command]
+pub fn general_settings(settings: State<'_, Arc<Settings>>) -> General {
+    settings.general()
+}
+
+#[tauri::command]
+pub fn set_general_settings(
+    settings: State<'_, Arc<Settings>>,
+    general: General,
+) -> Result<(), SettingsChangeError> {
+    settings.set_general(general).map_err(|error| {
+        tracing::error!("{error}");
+        SettingsChangeError::Settings
+    })
 }

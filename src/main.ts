@@ -5,6 +5,7 @@ import { watchAccount } from "./lib/account.svelte";
 import { watchDownloads } from "./lib/actions.svelte";
 import { watchConnection } from "./lib/connection.svelte";
 import { isMac, isTauri } from "./lib/platform";
+import { loadGeneralSettings } from "./lib/settings.svelte";
 
 // Only the macOS window is transparent (built in src-tauri/src/lib.rs); elsewhere the page paints its own background.
 if (isMac && isTauri) {
@@ -19,4 +20,7 @@ if (isTauri) {
 
 const target = document.getElementById("app");
 if (!target) throw new Error("index.html is missing the #app element");
-mount(App, { target });
+const settingsRead = isTauri
+  ? loadGeneralSettings().catch((error) => console.error("could not read the settings", error))
+  : Promise.resolve();
+settingsRead.then(() => mount(App, { target }));

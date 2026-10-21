@@ -55,7 +55,9 @@ pub fn run() {
             commands::search_start_favorites,
             commands::favorite,
             commands::vote,
-            commands::download
+            commands::download,
+            commands::general_settings,
+            commands::set_general_settings
         ])
         .register_asynchronous_uri_scheme_protocol(media::SCHEME, |context, request, responder| {
             media::handle(context.app_handle(), request, responder)

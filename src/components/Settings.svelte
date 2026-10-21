@@ -17,13 +17,15 @@
     type SettingsChangeError,
   } from "../lib/connection.svelte";
   import { settingsChangeMessage } from "../lib/errors";
-  import { currentLocale, m } from "../lib/i18n/index.svelte";
+  import { currentLocale, m, type Language } from "../lib/i18n/index.svelte";
+  import { changeGeneralSettings, generalSettings } from "../lib/settings.svelte";
   import ConnectionStatus from "./ConnectionStatus.svelte";
   import MullvadSignInSheet from "./MullvadSignInSheet.svelte";
 
   let { onsignin }: { onsignin: () => void } = $props();
 
   const modes: ConnectionMode[] = ["direct", "wireGuard", "mullvad"];
+  const languages: Language[] = ["system", "en", "ko"];
 
   let details = $state<ConnectionDetails | null>(null);
   let expiry = $state<Date | null>(null);
@@ -31,6 +33,7 @@
   let busy = $state(false);
   let error = $state<SettingsChangeError | null>(null);
   let accountError = $state<SignInError | null>(null);
+  let generalError = $state<SettingsChangeError | null>(null);
   let mullvadSheet: MullvadSignInSheet;
 
   const status = $derived(connection());
@@ -68,6 +71,10 @@
     if (outcome !== null && outcome !== "cancelled") error = outcome;
     await refresh();
     busy = false;
+  }
+
+  async function setLanguage(language: Language) {
+    generalError = await changeGeneralSettings({ language });
   }
 
   async function leaveE621() {
@@ -111,9 +118,42 @@
   const label = "w-28 shrink-0";
   const action =
     "ml-auto h-7 shrink-0 rounded-sm bg-panel px-2.5 text-ink/85 ring-1 ring-seam transition-colors hover:bg-hover disabled:opacity-50";
+  const segments = "flex rounded-md bg-hover p-0.5";
+  const segment = (selected: boolean) => [
+    "h-7 rounded-sm px-3 transition-colors",
+    selected ? "bg-panel font-medium text-ink shadow-panel" : "text-ink/75 hover:text-ink",
+  ];
 </script>
 
 <div class="flex max-w-[600px] flex-col gap-7 px-8 pt-4 pb-10">
+  <section class="flex flex-col gap-2">
+    <h2 class="px-1 font-strong">{m().settings.general}</h2>
+    <div class={group}>
+      <div class={row}>
+        <span class={label}>{m().settings.language}</span>
+        <div class={segments} role="radiogroup" aria-label={m().settings.language}>
+          {#each languages as language (language)}
+            {@const selected = generalSettings().language === language}
+            <button
+              class={segment(selected)}
+              role="radio"
+              aria-checked={selected}
+              lang={language === "system" ? undefined : language}
+              onclick={() => !selected && setLanguage(language)}
+            >
+              {m().settings.languages[language]}
+            </button>
+          {/each}
+        </div>
+      </div>
+    </div>
+    {#if generalError}
+      <p class="flex items-start gap-2 px-1" role="alert">
+        <CircleAlert size={16} strokeWidth={1.75} class="mt-px shrink-0" />{settingsChangeMessage(generalError)}
+      </p>
+    {/if}
+  </section>
+
   <section class="flex flex-col gap-2">
     <h2 class="px-1 font-strong">{m().settings.account}</h2>
     <div class={group}>
@@ -163,13 +203,10 @@
 
       <div class={row}>
         <span class={label}>{m().settings.mode}</span>
-        <div class="flex rounded-md bg-hover p-0.5" role="radiogroup" aria-label={m().settings.mode}>
+        <div class={segments} role="radiogroup" aria-label={m().settings.mode}>
           {#each modes as mode (mode)}
             <button
-              class={[
-                "h-7 rounded-sm px-3 transition-colors",
-                details?.mode === mode ? "bg-panel font-medium text-ink shadow-panel" : "text-ink/75 hover:text-ink",
-              ]}
+              class={segment(details?.mode === mode)}
               role="radio"
               aria-checked={details?.mode === mode}
               disabled={busy}

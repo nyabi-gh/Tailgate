@@ -28,6 +28,9 @@ const en = {
     },
   },
   settings: {
+    general: "General",
+    language: "Language",
+    languages: { system: "System", en: "English", ko: "한국어" },
     account: "Account",
     e621: "e621",
     notSignedIn: "Not signed in",

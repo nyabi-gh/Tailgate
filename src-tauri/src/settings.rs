@@ -17,6 +17,23 @@ pub const DEFAULT_LOCATION: &str = "jp-tyo";
 pub struct SettingsFile {
     #[serde(default)]
     pub connection: Option<ConnectionSettings>,
+    #[serde(default)]
+    pub general: General,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct General {
+    pub language: Language,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Language {
+    #[default]
+    System,
+    En,
+    Ko,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
@@ -67,6 +84,8 @@ pub enum SettingsError {
     Damaged(serde_json::Error),
     #[error("could not write the settings file: {0}")]
     Write(io::Error),
+    #[error("the settings file could not be loaded, so it is left as it is")]
+    NotLoaded,
 }
 
 pub struct Settings {
@@ -101,6 +120,31 @@ impl Settings {
         let mut file = self.lock();
         let mut next = file.clone().ok().flatten().unwrap_or_default();
         next.connection = Some(connection);
+        write(&self.path, &next).map_err(SettingsError::Write)?;
+        *file = Ok(Some(next));
+        Ok(())
+    }
+
+    /// The defaults while nothing is saved or the file cannot be loaded.
+    pub fn general(&self) -> General {
+        self.lock()
+            .as_ref()
+            .ok()
+            .and_then(Option::as_ref)
+            .map(|file| file.general.clone())
+            .unwrap_or_default()
+    }
+
+    /// Unlike the connection, this never replaces a file that could not be loaded: the
+    /// connection saved in it would be lost, and a damaged file keeps the connection blocked
+    /// (docs/report.md §6.3, rule 1).
+    pub fn set_general(&self, general: General) -> Result<(), SettingsError> {
+        let mut file = self.lock();
+        let Ok(current) = &*file else {
+            return Err(SettingsError::NotLoaded);
+        };
+        let mut next = current.clone().unwrap_or_default();
+        next.general = general;
         write(&self.path, &next).map_err(SettingsError::Write)?;
         *file = Ok(Some(next));
         Ok(())
@@ -205,11 +249,51 @@ mod tests {
     }
 
     #[test]
+    fn general_settings_are_saved_beside_the_connection() {
+        let dir = TempDir::new();
+        let path = dir.join("settings.json");
+        let settings = Settings::load(path.clone());
+        assert_eq!(settings.general(), General::default());
+        settings
+            .set_connection(ConnectionSettings::new(ConnectionMode::Mullvad))
+            .unwrap();
+        let general = General {
+            language: Language::Ko,
+        };
+        settings.set_general(general.clone()).unwrap();
+
+        let loaded = Settings::load(path);
+        assert_eq!(loaded.general(), general);
+        assert_eq!(
+            loaded.connection().unwrap().unwrap().mode,
+            ConnectionMode::Mullvad
+        );
+    }
+
+    #[test]
+    fn general_settings_leave_a_damaged_file_alone() {
+        let dir = TempDir::new();
+        let path = dir.join("settings.json");
+        fs::write(&path, "{ not json").unwrap();
+        let settings = Settings::load(path.clone());
+        assert_eq!(settings.general(), General::default());
+
+        let saved = settings.set_general(General {
+            language: Language::En,
+        });
+        assert!(matches!(saved, Err(SettingsError::NotLoaded)));
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{ not json");
+        assert!(settings.connection().is_err());
+    }
+
+    #[test]
     fn missing_fields_take_their_defaults() {
         let dir = TempDir::new();
         let path = dir.join("settings.json");
         fs::write(&path, r#"{"connection":{"mode":"mullvad"}}"#).unwrap();
-        let connection = Settings::load(path).connection().unwrap().unwrap();
+        let settings = Settings::load(path);
+        let connection = settings.connection().unwrap().unwrap();
         assert_eq!(connection, ConnectionSettings::new(ConnectionMode::Mullvad));
+        assert_eq!(settings.general(), General::default());
     }
 }

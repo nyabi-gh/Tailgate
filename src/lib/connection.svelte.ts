@@ -149,7 +149,7 @@ export function setMullvadLocation(code: string): Promise<SettingsChangeError | 
 }
 
 /** Resolves to the command's failure, or `null`. Anything else is a bug and is rethrown. */
-async function attempt(call: Promise<unknown>): Promise<SettingsChangeError | null> {
+export async function attempt(call: Promise<unknown>): Promise<SettingsChangeError | null> {
   try {
     await call;
     return null;
