@@ -1,16 +1,18 @@
 # 진행 상황
 
-2026-10-19 기준. 계획은 [report.md](report.md), 근거는 [research.md](research.md). 상태는 이 문서에만 적는다.
+2026-10-21 기준. 계획은 [report.md](report.md), 근거는 [research.md](research.md). 상태는 이 문서에만 적는다.
 
 ## 지금 단계
 
-1단계 2번(터널 개념 검증)이 끝났다. 터널, `media://` 이미지와 동영상(블록 캐시), 연결 상태와 킬 스위치가 실제 앱에서 동작한다. 1단계 3번 API 계층(클라이언트·스로틀·모델·검색 페이지 넘김)과 4번 계정(로그인 시트, 키체인 저장, 시작 시 복원)도 됐다. 5번 검색 화면(태그 칩·자동완성·정렬, 3:4 격자, 가상·무한 스크롤, 크기 조절)도 실제 앱에서 동작한다. 6번 블랙리스트(e621 사이트와 같은 규칙, 익명 기본 목록, "N개 숨김")도 됐다. 7번 뷰어(전환 효과, 줌·패닝, 원본, GIF, 동영상, 정보 패널, 키보드)도 실제 앱에서 동작한다. 8번 즐겨찾기·투표·다운로드와 즐겨찾기 화면도 실제 앱에서 동작한다. 다음은 9번 연결 설정(설정 화면의 틀 포함)이다.
+1단계 1~8번이 끝났다. 터널·킬 스위치·`media://`(동영상 블록 캐시), API 계층, 계정(로그인·키체인), 검색(태그 칩·자동완성·정렬·3:4 격자·가상/무한 스크롤), 블랙리스트(e621 사이트와 같은 규칙), 뷰어(전환 효과·줌·원본·GIF·동영상·정보 패널), 즐겨찾기·투표·다운로드와 즐겨찾기 화면이 실제 앱에서 동작한다. 모두 커밋해 공개 저장소 https://github.com/nyabi-gh/Tailgate 에 올렸다.
+
+다음은 9번 연결 설정이다. **설정 화면이 아직 없다**(사이드바의 ⚙와 연결 표시를 누르면 빈 화면). 9번에서 설정 화면의 틀(계정·연결 칸)부터 만든다.
 
 ## 구현 현황
 
 | 영역 | 파일 | 상태 |
 |---|---|---|
-| 창·UI 껍데기 | `lib.rs`, `App.svelte`, `components/` | 반투명 사이드바, 떠 있는 본문 패널(반경 14px), 검색창(⌘K / Ctrl K, `/`), 빈 검색 화면과 예시 태그, 영어·한국어. 앱 아이콘(`src-tauri/icons/source.svg`가 원본) |
+| 창·UI 껍데기 | `lib.rs`, `App.svelte`, `components/` | 반투명 사이드바, 떠 있는 본문 패널(반경 14px), 검색창(⌘K / Ctrl K, `/`), 빈 검색 화면과 예시 태그, 영어·한국어, 화면 아래 알림. 앱 아이콘(`src-tauri/icons/source.svg`가 원본). 사이드바의 인기·풀·세트·설정 화면은 아직 비어 있음 |
 | 연결 표시 | `Sidebar.svelte`, `connection.svelte.ts` | 직접 / 연결 중 / `VPN · 서버` / 실패(원인은 마우스를 올리면) |
 | 키체인 | `secrets.rs` | 완료 |
 | `.conf` 파서 | `tunnel/config.rs` | 완료. 가져오기 화면은 1단계 9번 |
@@ -21,9 +23,9 @@
 | 타임아웃 | `network.rs`, `tunnel/` | report.md 6.5절 |
 | `media://` | `media/`, `media.ts` | 이미지는 통째로, 동영상은 1MB 블록 캐시(`media/blocks.rs`, 메모리 256MB, 다음 블록 미리 받기)로 응답. report.md 7.2절 |
 | 라이선스 | `LICENSE` | MIT. 배포물 고지는 1단계 11번 |
-| API 계층 | `api/`, `examples/api_probe.rs` | posts 검색(`PostSearch`, 100개씩, `b<id>` 또는 페이지 번호, 중복 제거), 단일 게시물, `users/me`, 자동완성. 요청 시작 간격 1초, UA, Basic 인증(자격 증명 설정 자리만, 저장은 4번), 429·503 재시도, 오류 코드. 화면·명령은 아직 없음 |
-| 계정 | `account.rs`, `account.svelte.ts`, `SignInSheet.svelte` | 로그인 시트(사이드바), e621 확인 뒤 키체인 `e621-account`에 저장, 로그아웃, 시작 시 복원하고 연결이 열리면 `/users/me`로 확인, 401이면 저장된 키를 지우고 "다시 로그인". UA는 API와 `media://` 모두 로그인한 이름. API 키 발급 페이지는 `tauri-plugin-opener`(e621 주소만 허용) |
-| 검색 | `search.rs`, `search.svelte.ts`, `layout.ts`, `tags.ts`, `TagInput`, `SortMenu`, `Grid`, `Thumb` | 태그 칩(카테고리 색: 자동완성과 첫 결과에서 앎, 메타태그는 meta 색, 제외는 취소선), 자동완성(3글자, 300ms, 접두어 캐시), 정렬 메뉴(`order:` 바꿈), 3:4 같은 크기 칸 격자(틈 3px, 그림은 칸을 채우게 자름. 2026-10-21 justified에서 바꿈), 가상 스크롤(±1화면), 남은 1.5화면에서 다음 페이지, ⌘/Ctrl+휠·슬라이더로 칸 폭 100~360(기본 180, 240 이상이면 `sample`), 로딩·빈 결과·오류·다시 시도, 계정이 바뀌면 다시 검색. 썸네일 클릭(뷰어)은 7번 |
+| API 계층 | `api/`, `examples/api_probe.rs` | posts 검색(`PostSearch`, 100개씩, `b<id>` 또는 페이지 번호, 중복 제거), 단일 게시물, `users/me`, 자동완성. 요청 시작 간격 1초, UA, Basic 인증(자격 증명 설정 자리만, 저장은 4번), 429·503 재시도, 오류 코드. 8번에서 POST·DELETE(폼 본문), 즐겨찾기·투표, 내 즐겨찾기 목록 추가 |
+| 계정 | `account.rs`, `account.svelte.ts`, `SignInSheet.svelte` | 로그인 시트(사이드바), e621 확인 뒤 키체인 `e621-account`에 저장, 로그아웃, 시작 시 복원하고 연결이 열리면 `/users/me`로 확인, 401이면 저장된 키를 지우고 "다시 로그인". UA는 API와 `media://` 모두 로그인한 이름. API 키 발급 페이지는 `tauri-plugin-opener`로 연다(권한은 7번에서 http/https 전체, 8번에서 파일 위치 열기 추가). 로그아웃은 실제 앱에서 안 해 봄 |
+| 검색 | `search.rs`, `search.svelte.ts`, `layout.ts`, `tags.ts`, `TagInput`, `SortMenu`, `Grid`, `Thumb` | 태그 칩(카테고리 색: 자동완성과 첫 결과에서 앎, 메타태그는 meta 색, 제외는 취소선), 자동완성(3글자, 300ms, 접두어 캐시), 정렬 메뉴(`order:` 바꿈), 3:4 같은 크기 칸 격자(틈 3px, 그림은 칸을 채우게 자름. 2026-10-21 justified에서 바꿈), 가상 스크롤(±1화면), 남은 1.5화면에서 다음 페이지, ⌘/Ctrl+휠·슬라이더로 칸 폭 100~360(기본 180, 240 이상이면 `sample`), 로딩·빈 결과·오류·다시 시도, 계정이 바뀌면 다시 검색, 썸네일을 누르면 뷰어 |
 | 블랙리스트 | `blacklist.rs`, `search.rs`, `search.svelte.ts`, `Grid`, `Thumb` | e621ng 규칙 그대로(research.md 2절). 블랙리스트는 자격 증명마다 `/users/me`로 한 번 받고(익명이면 사이트 기본 목록), 받기 전에는 게시물을 보내지 않음. 전부 걸린 페이지는 한 번에 최대 5페이지까지 이어 받음. 그리드 오른쪽 아래 "N개 숨김"으로 그 검색 동안 보이기, 보인 것엔 눈 가림 표시 |
 | 뷰어 | `Viewer`, `MediaStage`, `InfoPanel`, `viewer.svelte.ts`, `zoom.ts`, `media.ts` | 썸네일에서 커지며 열리고 그 자리로 닫힘(View Transitions), 이미지 샘플 → 확대하거나 요청하면 원본, GIF는 원본, 동영상 720p 우선·반복·음소거 시작, 휠·핀치 확대·끌기·더블클릭 맞춤/1:1, 이전·다음(끝 5개 전에 다음 페이지), 정보 패널(점수·즐겨찾기·등급·파일·업로더·출처·카테고리별 태그), ←/→·Esc·I·0 |
 | 즐겨찾기·투표·다운로드 | `api/`, `search.rs`, `download.rs`, `actions.svelte.ts`, `search.svelte.ts`, `InfoPanel`, `Toasts`, `App` | 뷰어 패널의 ♥·▲·▼·↓와 F·↑·↓·D(누르면 바로 반영, e621 응답으로 맞추고 실패하면 되돌림), 로그인 안 했으면 로그인 시트, 다운로드는 `~/Downloads/Tailgate/{id}_{artist}.{ext}`로 `.part`를 거쳐 저장·진행률·"Finder에서 보기", 사이드바 즐겨찾기 화면(즐겨찾기한 순서, 블랙리스트 적용). 검색과 즐겨찾기는 화면마다 따로 열려 결과와 스크롤을 기억 |
@@ -59,6 +61,7 @@
 | 10-19 | 재검토 수정 후 | `cargo test`(14), `cargo clippy --all-targets`, `cargo fmt --check`, `npm run check`, `npm run build`, 실제 앱 실행·캡처 | 모두 통과, 경고 0. 앱은 한국어로 뜨고 터널 연결 후 사이드바에 서버 표시 |
 | 10-19 | 핸드셰이크 포함 터널 시작 | `tunnel_probe` 37회(릴리스 34, 디버그 3) | 31~38ms가 35회, 99ms 1회, 5.3초 1회(원인 미확인). research.md 7절 |
 | 10-19 | static1 처리량, 720p 샘플 | 같은 파일을 직접·터널로 번갈아, Range 크기별 | 직접 0.9~1.75, 터널 0.63~1.08 MB/s. 720p 비트레이트 0.11~0.14 MB/s. 블록 1MB로 결정(report.md 7.2절) |
+| 10-19 | 터널 직후 첫 요청 | 위 37회 | 2회 SOCKS `TtlExpired`(DNS 또는 연결 시간 초과). 원인 미확인 |
 | 10-19 | 블록 캐시 | `cargo test`(21, 가짜 static1 서버로 작은 Range·미리 받기·마지막 블록·범위 밖·Range 없음), 실제 앱(빈 캐시, 터널) | WKWebView의 8~24바이트 Range 수백 개가 블록 하나당 상위 요청 한 번으로 처리됨. 재생 시작 720p 샘플(1.6MB) 2.6초, 3분 MP4(21.9MB) 3.05초. 100초·30초 탐색 후 재생 확인, 사용자도 재생 확인. 탐색 시간은 창이 가려져 두 영상이 함께 멈춘 구간이 섞여 정확히 못 잼(블록 하나 받기 약 2초) |
 | 10-19 | API 계층 | `cargo test`(39): Pawru 픽스처 디코딩(이미지·GIF·WebM·삭제·익명 me·자동완성), 가짜 서버로 UA·Authorization·재시도·오류 코드·페이지 넘김, 멈춘 시계로 시작 간격 | 통과 |
 | 10-19 | API 실호출 | `api_probe`, 터널(`jp-tyo-wg-001`) | 익명 me, `wolf` 2페이지(커서 이어짐), `order:score`, `type:webm`의 720p·MP4, `status:deleted` 100개 모두 파일 URL 없음, 단일 게시물, 자동완성 모두 디코딩됨. 3일 전 픽스처와 구조 같음 |
@@ -68,7 +71,6 @@
 | 10-21 | 블랙리스트 | `cargo test`(67: 규칙별 11, 검색 연동 5), 실제 앱(로그인 계정, 임시 코드로 `wolf` 검색 → 보이기) | 첫 페이지에서 1개 숨김, 버튼 "1개 숨김" ↔ "다시 숨기기", 보이면 눈 가림 표시 |
 | 10-21 | 뷰어 | `npm test`(16: 줌 7), 실제 앱(임시 코드로 열기·닫기, 사용자가 GIF와 이미지 확대 직접 확인) | View Transitions 지원(`VT: yes`), 동영상 게시물 재생과 정보 패널 표시, GIF 재생, 이미지 확대 |
 | 10-21 | 즐겨찾기·투표·다운로드 | `cargo test`(75: 쓰기 요청의 메서드·경로·본문, 즐겨찾기 페이지 넘김, 화면별 검색, 다운로드 이름 규칙·`.part`·이미 있는 파일·실패 정리·static1 밖 거부), `npm run check`·`build`, 실제 앱(사용자가 직접) | 통과. 사용자 확인: 즐겨찾기 추가·해제, 투표·취소, 다운로드, 즐겨찾기 화면, 화면 전환. 앱 로그에 경고·오류 없음(`/favorites.json` 디코딩 포함) |
-| 10-19 | 터널 직후 첫 요청 | 위 37회 | 2회 SOCKS `TtlExpired`(DNS 또는 연결 시간 초과). 원인 미확인 |
 
 ## 남은 일
 
@@ -104,4 +106,7 @@
 - 키체인 항목을 다른 실행 파일이 만들었거나 다시 빌드한 디버그 실행 파일이 읽으면 macOS가 접근 허용 창을 띄운다. 창이 떠 있는 동안 앱은 `connecting`으로 기다리고, 거부하면 `failed`(`credentialStore`)로 막힌 채 남는다.
 - 디버그 로그: `RUST_LOG=info,tailgate_lib=debug npm run tauri dev`. 웹 인스펙터는 `TAILGATE_DEVTOOLS=1`(디버그 빌드에서만).
 - 검사: `cargo test`, `cargo clippy --all-targets`, `cargo fmt --check`(`src-tauri`), `npm test`, `npm run check`, `npm run build`. Svelte 경고는 `npm run check`가 아니라 `npm run build`에서만 나오는 것이 있으니 둘 다 본다.
+- 클릭·입력이 필요한 화면 확인은 사용자가 개발 앱에서 직접 한다. 꼭 필요할 때만 커밋하지 않는 임시 자동 실행 코드(`// TEMP verification`)를 `App.svelte`에 넣고 확인 뒤 지운다. 창이 다른 창에 가려지면 WebKit이 타이머와 미디어를 멈추니 그동안 창을 앞에 두어야 한다.
+- 다운로드는 `~/Downloads/Tailgate`에 저장된다.
+- 원격 저장소: `origin` = https://github.com/nyabi-gh/Tailgate (공개). 공개 저장소 생성 같은 명령은 권한 검사에 막혀 사용자가 직접 실행했다.
 - 화면 확인: 키 입력 자동화(손쉬운 사용) 권한은 없고 화면 기록 권한은 있다. 창 캡처는 `CGWindowListCopyWindowInfo`로 창 번호를 찾아 `screencapture -l <번호>`. CSS 계산값은 작은 Swift 프로그램으로 WKWebView에 빌드된 CSS를 띄워 `getComputedStyle`로 잰다.

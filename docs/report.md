@@ -92,11 +92,12 @@ tailgate/
         mod.rs           Api, ApiError(오류 코드. 프런트엔드에는 코드와 값만 보내고 문구는 프런트엔드 몫)
         client.rs        e621 요청, UA, Basic 인증, 스로틀, 재시도
         models.rs        e621 원본 응답(serde) → 앱 모델 정규화
-        endpoints.rs     posts, users/me, autocomplete, PostSearch(페이지 넘김) … (favorites, votes는 8번)
+        endpoints.rs     posts, users/me, autocomplete, 블랙리스트, 즐겨찾기·투표, 내 즐겨찾기 목록, PostSearch(페이지 넘김)
+        testing.rs       테스트용 가짜 e621 서버 (테스트 빌드에서만)
       search.rs          화면마다 하나씩 열린 검색(태그 검색, 내 즐겨찾기), 검색어 태그의 카테고리를 결과에서 찾기
       blacklist.rs       파서 + 평가기 (e621ng의 블랙리스트 코드를 옮김)
       account.rs         API 키 저장/삭제(키체인 `e621-account`), 로그인·로그아웃, 시작 시 복원·확인, 401 처리, 계정 상태(watch)
-      settings.rs        설정 JSON (앱 설정 디렉터리)
+      settings.rs        설정 JSON (앱 설정 디렉터리) — 10번, 아직 없음
       download.rs        원본 다운로드(`.part`로 받아 이름 바꾸기, 진행률 이벤트), 파일명 `{id}_{artist}.{ext}`, 기본 폴더 `~/Downloads/Tailgate`(설정은 10번)
     examples/
       tunnel_probe.rs    실제 Mullvad 서버로 터널을 검증하는 수동 점검 도구
@@ -110,30 +111,29 @@ tailgate/
       platform.ts        OS 판별, 단축키 표기
       i18n/              en.ts(기준), ko.ts, 현재 언어 상태
       views.ts           사이드바 화면 목록
-      ipc.ts             invoke 래퍼 (명령 이름·타입을 한곳에)
       layout.ts          격자 계산(열 수·칸 크기·보이는 범위), 썸네일 크기 범위 (순수 함수, vitest)
       zoom.ts            뷰어 줌·패닝 계산(맞춤 배율, 커서 기준 확대, 이동 제한) (순수 함수, vitest)
       viewer.svelte.ts   뷰어 상태(열린 게시물, 이전·다음, 정보 패널, 음소거)
-      search.svelte.ts   검색 상태 (시작·다음 페이지·다시 시도), 알게 된 태그 카테고리
+      search.svelte.ts   화면별 게시물 목록(PostList: 시작·다음 페이지·다시 시도·블랙리스트 보이기), 알게 된 태그 카테고리
+      actions.svelte.ts  즐겨찾기·투표(먼저 반영 후 응답으로 맞춤)·다운로드와 진행률
+      toast.svelte.ts    화면 아래 알림
+      errors.ts          API 오류 코드 → 문구
       posts.ts           Rust 모델의 TS 타입, API 오류 코드
       tags.ts            태그 토큰 해석(제외·메타태그), 카테고리 색
-      keys.ts            키보드 단축키
-    state/               검색, 계정, 설정 상태 (Svelte runes 모듈)
-    views/               Search, Viewer, Favorites, Settings, Login
     components/          Sidebar, EmptySearch, TagInput, SortMenu, Grid, Thumb, Viewer, MediaStage, InfoPanel, SignInSheet, Toasts …
     styles/app.css       Tailwind 진입점, 디자인 토큰(CSS 변수 + @theme), 기본 스타일
 ```
 
 원칙:
 - **로직은 Rust, 화면은 Svelte.** 블랙리스트, 페이지네이션 커서, 응답 정규화, DText 파싱(2단계)은 Rust에서 하고 `cargo test`로 고정한다. 프런트엔드 테스트는 `layout.ts`처럼 순수 함수만 두고 vitest(`npm test`)로 돌린다.
-- Repository 계층, DI 컨테이너, 상태 관리 라이브러리는 쓰지 않는다. 상태는 Svelte runes 모듈 몇 개면 충분하다.
+- Repository 계층, DI 컨테이너, 상태 관리 라이브러리는 쓰지 않는다. 상태는 `lib/*.svelte.ts`의 Svelte runes 모듈 몇 개면 충분하다. 명령 이름과 타입은 그 명령을 쓰는 모듈(`connection`, `account`, `search`, `actions`)에 둔다. 처음 계획한 `ipc.ts`, `state/`, `views/`는 만들지 않았다(화면은 `components/`).
 - Rust↔TS 타입은 처음에는 손으로 맞춘다(모델이 10개 안팎). 어긋나는 일이 생기면 `ts-rs`로 생성하는 방식으로 바꾼다.
 - Rust 코드는 `cargo fmt`(기본 설정)와 `cargo clippy`를 통과시킨다.
 
 ## 5. 데이터 흐름
 
 ```
-Svelte 화면 → ipc.ts → invoke("next_page", {search})
+Svelte 화면 → search.svelte.ts → invoke("search_next", {id})
   → commands.rs → PostSearch(검색마다 하나) → api::client
       스로틀(요청 시작 간격 최소 1초. 응답을 기다리는 동안 다음 요청이 막히지는 않는다)
       UA "Tailgate/<버전> (by <user> on e621)", Authorization: Basic …
