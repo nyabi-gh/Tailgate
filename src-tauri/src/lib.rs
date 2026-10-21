@@ -2,6 +2,7 @@ pub mod account;
 pub mod api;
 mod blacklist;
 mod commands;
+mod download;
 mod media;
 pub mod network;
 mod search;
@@ -32,7 +33,11 @@ pub fn run() {
             commands::search_start,
             commands::search_next,
             commands::search_close,
-            commands::autocomplete
+            commands::autocomplete,
+            commands::search_start_favorites,
+            commands::favorite,
+            commands::vote,
+            commands::download
         ])
         .register_asynchronous_uri_scheme_protocol(media::SCHEME, |context, request, responder| {
             media::handle(context.app_handle(), request, responder)
@@ -47,6 +52,11 @@ pub fn run() {
             app.manage(Arc::clone(&account));
             app.manage(Arc::clone(&api));
             app.manage(Arc::new(search::Searches::default()));
+            app.manage(Arc::new(download::Downloads::new(
+                network.http().clone(),
+                user_agent.clone(),
+                app.path().download_dir()?.join("Tailgate"),
+            )));
             app.manage(Arc::new(media::Media::new(
                 network.http().clone(),
                 user_agent,

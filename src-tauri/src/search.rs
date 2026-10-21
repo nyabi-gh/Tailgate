@@ -51,7 +51,16 @@ pub enum ClosedSearch {
     Closed,
 }
 
+/// The screen a search belongs to. Each keeps one search open, so going back to a screen finds
+/// its results where they were.
+#[derive(Clone, Copy, PartialEq)]
+enum Screen {
+    Search,
+    Favorites,
+}
+
 struct OpenSearch {
+    screen: Screen,
     tags: Vec<String>,
     pages: Mutex<PostSearch>,
 }
@@ -70,16 +79,29 @@ pub struct Searches {
 }
 
 impl Searches {
-    /// The UI shows one search at a time, so starting one closes the others.
     pub fn start(&self, tags: &str) -> u64 {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let search = Arc::new(OpenSearch {
+        self.open(OpenSearch {
+            screen: Screen::Search,
             tags: tags.split_whitespace().map(str::to_owned).collect(),
             pages: Mutex::new(PostSearch::new(tags)),
-        });
+        })
+    }
+
+    /// The signed-in user's favorites, newest first.
+    pub fn start_favorites(&self) -> u64 {
+        self.open(OpenSearch {
+            screen: Screen::Favorites,
+            tags: Vec::new(),
+            pages: Mutex::new(PostSearch::favorites()),
+        })
+    }
+
+    /// Closes the search the same screen had open before.
+    fn open(&self, search: OpenSearch) -> u64 {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let mut open = self.open.lock().expect("searches lock poisoned");
-        open.clear();
-        open.insert(id, search);
+        open.retain(|_, other| other.screen != search.screen);
+        open.insert(id, Arc::new(search));
         id
     }
 
@@ -243,6 +265,20 @@ mod tests {
         assert_eq!((first.posts.len(), first.done), (100, false));
         let second = searches.next(&api, id).await.unwrap();
         assert_eq!((second.posts.len(), second.done), (1, true));
+    }
+
+    #[tokio::test]
+    async fn keeps_one_search_per_screen() {
+        let (api, _received) = api(Vec::new()).await;
+        let searches = Searches::default();
+        let favorites = searches.start_favorites();
+        let first = searches.start("rabbit");
+        searches.start("frog");
+        assert_eq!(
+            searches.next(&api, first).await,
+            Err(SearchError::Closed(ClosedSearch::Closed))
+        );
+        assert!(searches.open.lock().unwrap().contains_key(&favorites));
     }
 
     #[tokio::test]
