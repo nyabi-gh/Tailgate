@@ -13,8 +13,8 @@
     large,
   }: { post: Post; x: number; y: number; width: number; height: number; large: boolean } = $props();
 
-  // The 256px preview looks soft once rows are this tall on a 2x screen; the 850px sample is
-  // several times the download, so it is used only then (docs/report.md §5).
+  // The 256px-wide preview looks soft in large cells on a 2x screen; the 850px sample is several
+  // times the download, so it is used only then (docs/report.md §5).
   const source = $derived(large ? (post.sample?.url ?? post.preview.url) : post.preview.url);
   // Per source, so a failed preview does not hide the sample when the rows grow.
   let failedSource = $state<string | null>(null);

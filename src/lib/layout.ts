@@ -1,67 +1,46 @@
-/** The thumbnail size range, as the target height of a row in CSS pixels. */
-export const ROW_HEIGHT = { min: 120, max: 400, initial: 220 };
+/** The thumbnail size range, as the cell width the grid aims for, in CSS pixels. */
+export const CELL_WIDTH = { min: 100, max: 360, initial: 180 };
 
-/** One placed item, by its index in the input. */
-export type Tile = { index: number; x: number; width: number };
+/** Cells are 3:4 portrait, since most e621 art is taller than wide and gets cropped less so. */
+export const CELL_ASPECT = 3 / 4;
 
-export type Row = { y: number; height: number; tiles: Tile[] };
-
-export type Layout = { rows: Row[]; height: number };
-
-/** Narrower or wider pictures are shown cropped to this range, so none takes over a row. */
-const MIN_ASPECT = 0.5;
-const MAX_ASPECT = 3;
-
-export function clampAspect(aspect: number): number {
-  if (!Number.isFinite(aspect) || aspect <= 0) return 1;
-  return Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, aspect));
-}
+export type Grid = {
+  columns: number;
+  cellWidth: number;
+  cellHeight: number;
+  gap: number;
+  rows: number;
+  height: number;
+};
 
 /**
- * Justified rows: pictures keep their aspect ratio, each full row is scaled to exactly `width`,
- * and its height lands near `targetHeight`. The last row is left at the target height rather
- * than stretched, since more items may still arrive.
+ * Equal cells filling `width`: as many columns as fit at about `targetWidth` each, then the
+ * cells are widened to close the leftover space.
  */
-export function justify(aspects: number[], width: number, targetHeight: number, gap: number): Layout {
-  const rows: Row[] = [];
-  if (width <= 0 || targetHeight <= 0) return { rows, height: 0 };
-
-  let y = 0;
-  let start = 0;
-  let aspectSum = 0;
-  const place = (end: number, height: number) => {
-    const tiles: Tile[] = [];
-    let x = 0;
-    aspects.slice(start, end).forEach((aspect, offset) => {
-      const tileWidth = clampAspect(aspect) * height;
-      tiles.push({ index: start + offset, x, width: tileWidth });
-      x += tileWidth + gap;
-    });
-    rows.push({ y, height, tiles });
-    y += height + gap;
-    start = end;
-    aspectSum = 0;
-  };
-
-  aspects.forEach((aspect, index) => {
-    aspectSum += clampAspect(aspect);
-    const gaps = gap * (index - start);
-    if (aspectSum * targetHeight + gaps >= width) place(index + 1, (width - gaps) / aspectSum);
-  });
-  if (start < aspects.length) place(aspects.length, targetHeight);
-
-  return { rows, height: Math.max(0, y - gap) };
+export function grid(count: number, width: number, targetWidth: number, gap: number): Grid {
+  const columns = width > 0 && targetWidth > 0 ? Math.max(1, Math.round((width + gap) / (targetWidth + gap))) : 0;
+  const cellWidth = columns > 0 ? (width - gap * (columns - 1)) / columns : 0;
+  const cellHeight = cellWidth / CELL_ASPECT;
+  const rows = columns > 0 ? Math.ceil(count / columns) : 0;
+  return { columns, cellWidth, cellHeight, gap, rows, height: rows > 0 ? rows * (cellHeight + gap) - gap : 0 };
 }
 
-/** Index of the first row whose bottom is below `top`. */
-export function firstRowBelow(rows: Row[], top: number): number {
-  let low = 0;
-  let high = rows.length;
-  while (low < high) {
-    const middle = (low + high) >> 1;
-    const row = rows[middle];
-    if (row !== undefined && row.y + row.height < top) low = middle + 1;
-    else high = middle;
-  }
-  return low;
+export function cellPosition(layout: Grid, index: number): { x: number; y: number } {
+  const column = index % layout.columns;
+  const row = Math.floor(index / layout.columns);
+  return { x: column * (layout.cellWidth + layout.gap), y: row * (layout.cellHeight + layout.gap) };
+}
+
+/** Indices of the items in rows that overlap `top` to `bottom`, as `[start, end)`. */
+export function visibleRange(layout: Grid, count: number, top: number, bottom: number): [number, number] {
+  if (layout.columns === 0) return [0, 0];
+  const pitch = layout.cellHeight + layout.gap;
+  const firstRow = Math.max(0, Math.floor(top / pitch));
+  const lastRow = Math.max(0, Math.ceil(bottom / pitch));
+  return [Math.min(count, firstRow * layout.columns), Math.min(count, lastRow * layout.columns)];
+}
+
+/** The row the item at `index` is in, for keeping it in view across a resize. */
+export function rowOf(layout: Grid, index: number): number {
+  return layout.columns > 0 ? Math.floor(index / layout.columns) : 0;
 }

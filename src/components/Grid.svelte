@@ -3,16 +3,16 @@
   import { tick } from "svelte";
   import { canLoadRemote } from "../lib/connection.svelte";
   import { m } from "../lib/i18n/index.svelte";
-  import { firstRowBelow, justify, ROW_HEIGHT } from "../lib/layout";
+  import { CELL_WIDTH, cellPosition, grid, rowOf, visibleRange } from "../lib/layout";
   import { isMac } from "../lib/platform";
   import type { ApiErrorCode } from "../lib/posts";
   import { loadMore, retry, search } from "../lib/search.svelte";
   import Thumb from "./Thumb.svelte";
 
-  let { rowHeight = $bindable() }: { rowHeight: number } = $props();
+  let { cellWidth = $bindable() }: { cellWidth: number } = $props();
 
-  /** From here on thumbnails use the sample instead of the preview. */
-  const LARGE_ROW_HEIGHT = 300;
+  /** From this cell width on, thumbnails use the sample instead of the preview. */
+  const LARGE_CELL_WIDTH = 240;
   const GAP = 3;
   const PADDING = 8;
 
@@ -21,15 +21,17 @@
   let viewport = $state(0);
   let scrollTop = $state(0);
 
-  const aspects = $derived(search.posts.map((post) => post.file.width / post.file.height));
-  const layout = $derived(justify(aspects, width, rowHeight, GAP));
+  const layout = $derived(grid(search.posts.length, width, cellWidth, GAP));
   /** One screen above and below stays rendered, so fast scrolling does not show empty space. */
-  const visible = $derived(
-    layout.rows.slice(
-      firstRowBelow(layout.rows, scrollTop - PADDING - viewport),
-      firstRowBelow(layout.rows, scrollTop - PADDING + 2 * viewport),
-    ),
-  );
+  const visible = $derived.by(() => {
+    const [start, end] = visibleRange(
+      layout,
+      search.posts.length,
+      scrollTop - PADDING - viewport,
+      scrollTop - PADDING + 2 * viewport,
+    );
+    return search.posts.slice(start, end).map((post, offset) => ({ post, index: start + offset }));
+  });
 
   $effect(() => {
     const observer = new ResizeObserver(() => {
@@ -52,21 +54,19 @@
       // Ctrl also arrives with trackpad pinches in WebKit.
       if (!(event.ctrlKey || (isMac && event.metaKey))) return;
       event.preventDefault();
-      resize(rowHeight - event.deltaY);
+      resize(cellWidth - event.deltaY);
     };
     scroller.addEventListener("wheel", onwheel, { passive: false });
     return () => scroller.removeEventListener("wheel", onwheel);
   });
 
-  /** Keeps the post at the top of the view in place while the rows change size. */
+  /** Keeps the post at the top of the view in place while the cells change size. */
   export async function resize(next: number) {
-    const anchorRow = layout.rows[firstRowBelow(layout.rows, scrollTop - PADDING)];
-    const anchor = anchorRow?.tiles[0]?.index;
-    rowHeight = Math.round(Math.min(ROW_HEIGHT.max, Math.max(ROW_HEIGHT.min, next)));
-    if (anchor === undefined) return;
+    const [anchor] = visibleRange(layout, search.posts.length, scrollTop - PADDING, scrollTop - PADDING);
+    cellWidth = Math.round(Math.min(CELL_WIDTH.max, Math.max(CELL_WIDTH.min, next)));
+    if (anchor >= search.posts.length) return;
     await tick();
-    const row = layout.rows.find((candidate) => candidate.tiles.some((tile) => tile.index === anchor));
-    if (row !== undefined) scroller.scrollTop = row.y + PADDING;
+    scroller.scrollTop = rowOf(layout, anchor) * (layout.cellHeight + layout.gap) + PADDING;
   }
 
   function errorMessage(code: ApiErrorCode): string {
@@ -99,20 +99,16 @@
     </div>
   {:else}
     <div class="relative" style:height="{layout.height}px" style:margin="{PADDING}px">
-      {#each visible as row (row.y)}
-        {#each row.tiles as tile (tile.index)}
-          {@const post = search.posts[tile.index]}
-          {#if post !== undefined}
-            <Thumb
-              {post}
-              x={tile.x}
-              y={row.y}
-              width={tile.width}
-              height={row.height}
-              large={rowHeight >= LARGE_ROW_HEIGHT}
-            />
-          {/if}
-        {/each}
+      {#each visible as { post, index } (post.id)}
+        {@const position = cellPosition(layout, index)}
+        <Thumb
+          {post}
+          x={position.x}
+          y={position.y}
+          width={layout.cellWidth}
+          height={layout.cellHeight}
+          large={cellWidth >= LARGE_CELL_WIDTH}
+        />
       {/each}
     </div>
     {#if search.error !== null}

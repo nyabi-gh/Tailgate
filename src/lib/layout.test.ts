@@ -1,78 +1,59 @@
 import { describe, expect, it } from "vitest";
-import { clampAspect, firstRowBelow, justify } from "./layout";
+import { CELL_ASPECT, cellPosition, grid, rowOf, visibleRange } from "./layout";
 
-function at<T>(list: T[], index: number): T {
-  const item = list.at(index);
-  if (item === undefined) throw new Error(`no item at ${index}`);
-  return item;
-}
-
-const rowWidth = (row: { tiles: { x: number; width: number }[] }) => {
-  const last = at(row.tiles, -1);
-  return last.x + last.width;
-};
-
-describe("justify", () => {
-  it("fills every full row to the exact width", () => {
-    const aspects = [1, 1.5, 0.7, 2, 1, 1, 0.8, 1.3, 1.6, 0.9];
-    const { rows } = justify(aspects, 1000, 200, 3);
-    for (const row of rows.slice(0, -1)) expect(rowWidth(row)).toBeCloseTo(1000, 6);
+describe("grid", () => {
+  it("fits as many columns as the target width allows and fills the width exactly", () => {
+    const layout = grid(10, 1000, 180, 3);
+    expect(layout.columns).toBe(5);
+    expect(layout.columns * layout.cellWidth + (layout.columns - 1) * 3).toBeCloseTo(1000, 6);
   });
 
-  it("keeps the row heights near the target", () => {
-    const { rows } = justify(Array(40).fill(1.2), 1000, 200, 3);
-    for (const row of rows.slice(0, -1)) {
-      expect(row.height).toBeGreaterThan(150);
-      expect(row.height).toBeLessThanOrEqual(200);
-    }
+  it("makes every cell 3:4", () => {
+    const layout = grid(10, 1000, 180, 3);
+    expect(layout.cellWidth / layout.cellHeight).toBeCloseTo(CELL_ASPECT, 6);
   });
 
-  it("leaves the last row at the target height and narrower than the width", () => {
-    const { rows } = justify([1, 1, 1, 1, 1, 1], 1000, 200, 3);
-    const last = at(rows, -1);
-    expect(last.height).toBe(200);
-    expect(rowWidth(last)).toBeLessThan(1000);
+  it("keeps at least one column in a narrow view", () => {
+    expect(grid(3, 80, 180, 3).columns).toBe(1);
   });
 
-  it("places every item once, in order, with the gap between them", () => {
-    const aspects = Array.from({ length: 23 }, (_, index) => 0.6 + (index % 5) * 0.4);
-    const { rows, height } = justify(aspects, 900, 180, 3);
-    const indices = rows.flatMap((row) => row.tiles.map((tile) => tile.index));
-    expect(indices).toEqual(aspects.map((_, index) => index));
-    for (const row of rows) {
-      row.tiles.slice(1).forEach((tile, i) => {
-        const previous = at(row.tiles, i);
-        expect(tile.x).toBeCloseTo(previous.x + previous.width + 3, 6);
-      });
-    }
-    const last = at(rows, -1);
-    expect(height).toBeCloseTo(last.y + last.height, 6);
-    rows.slice(1).forEach((row, i) => expect(row.y).toBeCloseTo(at(rows, i).y + at(rows, i).height + 3, 6));
+  it("counts rows and total height, the last row included when partly filled", () => {
+    const layout = grid(11, 1000, 180, 3);
+    expect(layout.rows).toBe(3);
+    expect(layout.height).toBeCloseTo(3 * layout.cellHeight + 2 * 3, 6);
   });
 
-  it("clamps extreme aspect ratios", () => {
-    expect(clampAspect(20)).toBe(3);
-    expect(clampAspect(0.05)).toBe(0.5);
-    expect(clampAspect(0)).toBe(1);
-    expect(clampAspect(Number.NaN)).toBe(1);
-    const { rows } = justify([20], 1000, 200, 3);
-    expect(at(at(rows, 0).tiles, 0).width).toBe(600);
-  });
-
-  it("gives an empty layout for no items or no room", () => {
-    expect(justify([], 1000, 200, 3)).toEqual({ rows: [], height: 0 });
-    expect(justify([1, 1], 0, 200, 3)).toEqual({ rows: [], height: 0 });
+  it("gives an empty grid for no items or no room", () => {
+    expect(grid(0, 1000, 180, 3).height).toBe(0);
+    expect(grid(5, 0, 180, 3)).toMatchObject({ columns: 0, rows: 0, height: 0 });
   });
 });
 
-describe("firstRowBelow", () => {
-  const { rows } = justify(Array(30).fill(1), 1000, 200, 3);
+describe("cellPosition", () => {
+  it("places items left to right, then row by row, with the gap between", () => {
+    const layout = grid(10, 1000, 180, 3);
+    expect(cellPosition(layout, 0)).toEqual({ x: 0, y: 0 });
+    expect(cellPosition(layout, 1).x).toBeCloseTo(layout.cellWidth + 3, 6);
+    expect(cellPosition(layout, 5)).toEqual({ x: 0, y: layout.cellHeight + 3 });
+  });
+});
 
-  it("finds the first row still visible at a scroll position", () => {
-    expect(firstRowBelow(rows, 0)).toBe(0);
-    const third = at(rows, 2);
-    expect(firstRowBelow(rows, third.y + 1)).toBe(2);
-    expect(firstRowBelow(rows, third.y + third.height + 1)).toBe(3);
-    expect(firstRowBelow(rows, 1e9)).toBe(rows.length);
+describe("visibleRange", () => {
+  const layout = grid(100, 1000, 180, 3);
+  const pitch = layout.cellHeight + 3;
+
+  it("covers whole rows overlapping the view", () => {
+    expect(visibleRange(layout, 100, 0, pitch * 2)).toEqual([0, 10]);
+    expect(visibleRange(layout, 100, pitch * 3 + 1, pitch * 4 + 1)).toEqual([15, 25]);
+  });
+
+  it("stays within the items", () => {
+    expect(visibleRange(layout, 100, -500, pitch)).toEqual([0, 5]);
+    expect(visibleRange(layout, 100, pitch * 18, pitch * 40)).toEqual([90, 100]);
+  });
+
+  it("finds the row of an item", () => {
+    expect(rowOf(layout, 0)).toBe(0);
+    expect(rowOf(layout, 7)).toBe(1);
   });
 });

@@ -9,14 +9,14 @@
   import TagInput from "./components/TagInput.svelte";
   import { account } from "./lib/account.svelte";
   import { m } from "./lib/i18n/index.svelte";
-  import { ROW_HEIGHT } from "./lib/layout";
+  import { CELL_WIDTH } from "./lib/layout";
   import { isMac } from "./lib/platform";
   import { search, startSearch } from "./lib/search.svelte";
   import type { View } from "./lib/views";
 
   let view = $state<View>("search");
   let tags = $state<string[]>([]);
-  let rowHeight = $state(ROW_HEIGHT.initial);
+  let cellWidth = $state(CELL_WIDTH.initial);
   let tagInput: TagInput;
   let grid: Grid | undefined = $state();
   let signInSheet: SignInSheet;
@@ -81,10 +81,10 @@
           <input
             type="range"
             class="w-24 accent-focus"
-            min={ROW_HEIGHT.min}
-            max={ROW_HEIGHT.max}
+            min={CELL_WIDTH.min}
+            max={CELL_WIDTH.max}
             step="10"
-            value={rowHeight}
+            value={cellWidth}
             oninput={(event) => grid?.resize(Number(event.currentTarget.value))}
           />
         </label>
@@ -96,7 +96,7 @@
         {#if search.query === null}
           <div class="h-full overflow-auto"><EmptySearch onpick={addTag} /></div>
         {:else}
-          <Grid bind:this={grid} bind:rowHeight />
+          <Grid bind:this={grid} bind:cellWidth />
         {/if}
       {/if}
     </section>
