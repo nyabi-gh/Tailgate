@@ -95,6 +95,7 @@ pub struct Post {
     pub comment_count: u64,
     pub deleted: bool,
     pub pending: bool,
+    pub flagged: bool,
     pub description: String,
     pub sources: Vec<String>,
     pub uploader: Uploader,
@@ -262,6 +263,7 @@ struct RawVideo {
 #[derive(Deserialize)]
 struct RawFlags {
     pending: bool,
+    flagged: bool,
     deleted: bool,
 }
 
@@ -303,6 +305,7 @@ impl From<RawPost> for Post {
             comment_count: raw.comment_count,
             deleted: raw.flags.deleted,
             pending: raw.flags.pending,
+            flagged: raw.flags.flagged,
             description: raw.description,
             sources: raw.sources,
             uploader: Uploader {
@@ -350,6 +353,10 @@ impl RawVideo {
 }
 
 impl RawUser {
+    pub(super) fn into_blacklist(self) -> String {
+        self.blacklisted_tags.unwrap_or_default()
+    }
+
     pub(super) fn into_user(self) -> Option<User> {
         Some(User {
             id: self.id?,
@@ -357,6 +364,13 @@ impl RawUser {
             blacklisted_tags: self.blacklisted_tags.unwrap_or_default(),
         })
     }
+}
+
+/// Posts from a `/posts.json` response, for tests elsewhere that start from real responses.
+#[cfg(test)]
+pub(crate) fn decode_posts(json: &str) -> Vec<Post> {
+    let raw: RawPosts = serde_json::from_str(json).unwrap();
+    raw.posts.into_iter().map(Post::from).collect()
 }
 
 #[cfg(test)]

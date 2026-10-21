@@ -11,15 +11,25 @@ use std::{
 use serde::Serialize;
 use tokio::sync::Mutex;
 
-use crate::api::{
-    Api, ApiError, PostSearch,
-    models::{Post, TagCategory, Tags},
+use crate::{
+    api::{
+        Api, ApiError, Credentials, PostSearch,
+        models::{Post, TagCategory, Tags},
+    },
+    blacklist::Blacklist,
 };
+
+/// A page whose posts are all blacklisted is followed by the next, up to this many pages per
+/// call (one second each under the throttle); then the empty result goes back and the grid
+/// asks again as it scrolls.
+const MAX_PAGES_PER_CALL: usize = 5;
 
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchPage {
+    /// Blacklisted posts included: the UI hides them until asked to show them.
     pub posts: Vec<Post>,
+    pub blacklisted: Vec<u64>,
     pub done: bool,
     /// Categories of the searched tags that this page's posts reveal, so the search field can
     /// color them without asking e621.
@@ -46,10 +56,17 @@ struct OpenSearch {
     pages: Mutex<PostSearch>,
 }
 
+/// The blacklist of the credentials it was fetched with, so signing in or out fetches anew.
+struct CachedBlacklist {
+    credentials: Option<Arc<Credentials>>,
+    blacklist: Arc<Blacklist>,
+}
+
 #[derive(Default)]
 pub struct Searches {
     next_id: AtomicU64,
     open: std::sync::Mutex<HashMap<u64, Arc<OpenSearch>>>,
+    blacklist: Mutex<Option<CachedBlacklist>>,
 }
 
 impl Searches {
@@ -74,13 +91,57 @@ impl Searches {
             .get(&id)
             .cloned()
             .ok_or(SearchError::Closed(ClosedSearch::Closed))?;
+        // Before any post is returned, so none slips through unfiltered.
+        let blacklist = self.blacklist(api).await.map_err(SearchError::Api)?;
         let mut pages = search.pages.lock().await;
-        let posts = pages.next_page(api).await.map_err(SearchError::Api)?;
+        let mut posts = Vec::new();
+        let mut blacklisted = Vec::new();
+        for _ in 0..MAX_PAGES_PER_CALL {
+            let page = match pages.next_page(api).await {
+                Ok(page) => page,
+                Err(error) if posts.is_empty() => return Err(SearchError::Api(error)),
+                // The hidden posts already in hand go back; the next call asks for this page
+                // again and reports the error if it persists.
+                Err(error) => {
+                    tracing::warn!("stopped following blacklisted pages: {error}");
+                    break;
+                }
+            };
+            let mut any_visible = false;
+            for post in page {
+                if blacklist.matches(&post) {
+                    blacklisted.push(post.id);
+                } else {
+                    any_visible = true;
+                }
+                posts.push(post);
+            }
+            if any_visible || pages.is_done() {
+                break;
+            }
+        }
         Ok(SearchPage {
             categories: categories(&search.tags, &posts),
             done: pages.is_done(),
+            blacklisted,
             posts,
         })
+    }
+
+    async fn blacklist(&self, api: &Api) -> Result<Arc<Blacklist>, ApiError> {
+        let mut cached = self.blacklist.lock().await;
+        let credentials = api.credentials();
+        if let Some(cached) = cached.as_ref()
+            && same_credentials(cached.credentials.as_ref(), credentials.as_ref())
+        {
+            return Ok(Arc::clone(&cached.blacklist));
+        }
+        let blacklist = Arc::new(Blacklist::parse(&api.blacklist().await?));
+        *cached = Some(CachedBlacklist {
+            credentials,
+            blacklist: Arc::clone(&blacklist),
+        });
+        Ok(blacklist)
     }
 
     pub fn close(&self, id: u64) {
@@ -88,6 +149,14 @@ impl Searches {
             .lock()
             .expect("searches lock poisoned")
             .remove(&id);
+    }
+}
+
+fn same_credentials(a: Option<&Arc<Credentials>>, b: Option<&Arc<Credentials>>) -> bool {
+    match (a, b) {
+        (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+        (None, None) => true,
+        _ => false,
     }
 }
 
@@ -149,6 +218,15 @@ mod tests {
         json!({ "posts": posts })
     }
 
+    /// An anonymous `/users/me` reply carrying `blacklist`.
+    fn me(blacklist: &str) -> String {
+        let mut me: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/users_me_anonymous.json"))
+                .unwrap();
+        me["blacklisted_tags"] = json!(blacklist);
+        ok(&me)
+    }
+
     /// The receiver must outlive the requests: the fake server reports each one to it.
     async fn api(responses: Vec<String>) -> (Api, mpsc::UnboundedReceiver<Received>) {
         let (base, received) = serve(responses).await;
@@ -158,7 +236,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn reads_pages_until_done() {
-        let (api, _received) = api(vec![ok(&page(1..=100)), ok(&page([0]))]).await;
+        let (api, _received) = api(vec![me(""), ok(&page(1..=100)), ok(&page([0]))]).await;
         let searches = Searches::default();
         let id = searches.start("rabbit");
         let first = searches.next(&api, id).await.unwrap();
@@ -187,7 +265,9 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn passes_api_errors_through() {
-        let (api, _received) = api(vec![json_response("503 Service Unavailable", "{}"); 4]).await;
+        let mut responses = vec![me("")];
+        responses.extend(vec![json_response("503 Service Unavailable", "{}"); 4]);
+        let (api, _received) = api(responses).await;
         let searches = Searches::default();
         let id = searches.start("rabbit");
         assert_eq!(
@@ -198,7 +278,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn finds_the_categories_of_searched_tags_in_the_posts() {
-        let (api, _received) = api(vec![ok(&page([1]))]).await;
+        let (api, _received) = api(vec![me(""), ok(&page([1]))]).await;
         let searches = Searches::default();
         let id = searches.start("Rabbit -natural_habitok ~frog rating:s yoga* unknown_tag");
         let page = searches.next(&api, id).await.unwrap();
@@ -209,6 +289,81 @@ mod tests {
                 ("natural_habitok".to_owned(), TagCategory::Artist),
                 ("frog".to_owned(), TagCategory::Species),
             ])
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn marks_blacklisted_posts() {
+        let (api, _received) = api(vec![me("id:<50"), ok(&page(1..=100))]).await;
+        let searches = Searches::default();
+        let id = searches.start("rabbit");
+        let page = searches.next(&api, id).await.unwrap();
+        assert_eq!(page.posts.len(), 100);
+        assert_eq!(page.blacklisted, (1..50).collect::<Vec<u64>>());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn follows_fully_blacklisted_pages_up_to_a_limit() {
+        let mut responses = vec![me("rabbit")];
+        responses.extend((0..6).map(|n| ok(&page(n * 100 + 1..=n * 100 + 100))));
+        let (api, mut received) = api(responses).await;
+        let searches = Searches::default();
+        let id = searches.start("frog");
+        let page = searches.next(&api, id).await.unwrap();
+        assert_eq!(page.posts.len(), 500);
+        assert_eq!(page.blacklisted.len(), 500);
+        assert!(!page.done);
+        let mut requests = 0;
+        while received.try_recv().is_ok() {
+            requests += 1;
+        }
+        assert_eq!(requests, 1 + MAX_PAGES_PER_CALL);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn returns_nothing_until_the_blacklist_is_known() {
+        let (api, mut received) =
+            api(vec![json_response("503 Service Unavailable", "{}"); 4]).await;
+        let searches = Searches::default();
+        let id = searches.start("frog");
+        assert_eq!(
+            searches.next(&api, id).await,
+            Err(SearchError::Api(ApiError::Unavailable))
+        );
+        while let Ok(request) = received.try_recv() {
+            assert_eq!(request.target, "/users/me.json");
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn fetches_the_blacklist_again_for_new_credentials() {
+        let (api, mut received) =
+            api(vec![me(""), ok(&page([1])), me("rabbit"), ok(&page([2]))]).await;
+        let searches = Searches::default();
+        let first = searches.start("frog");
+        assert!(
+            searches
+                .next(&api, first)
+                .await
+                .unwrap()
+                .blacklisted
+                .is_empty()
+        );
+        api.set_credentials(Some(Arc::new(Credentials {
+            username: "alice".into(),
+            api_key: "key".into(),
+        })));
+        let second = searches.start("frog");
+        assert_eq!(searches.next(&api, second).await.unwrap().blacklisted, [2]);
+        let targets: Vec<String> = std::iter::from_fn(|| received.try_recv().ok())
+            .map(|request| request.target)
+            .collect();
+        assert_eq!(
+            targets
+                .iter()
+                .filter(|target| *target == "/users/me.json")
+                .count(),
+            2
         );
     }
 }

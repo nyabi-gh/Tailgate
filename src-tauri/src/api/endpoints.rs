@@ -31,6 +31,13 @@ impl Api {
         Ok(raw.into_user())
     }
 
+    /// The blacklist e621 applies to the current credentials: the user's own, or the site's
+    /// default for anonymous requests.
+    pub async fn blacklist(&self) -> Result<String, ApiError> {
+        let raw: RawUser = self.client.get("users/me.json", &[]).await?;
+        Ok(raw.into_blacklist())
+    }
+
     pub async fn autocomplete(&self, text: &str) -> Result<Vec<TagSuggestion>, ApiError> {
         self.client
             .get("tags/autocomplete.json", &[("search[name_matches]", text)])

@@ -1,5 +1,6 @@
 pub mod account;
 pub mod api;
+mod blacklist;
 mod commands;
 mod media;
 pub mod network;
