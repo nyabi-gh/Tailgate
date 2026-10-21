@@ -1,16 +1,17 @@
-//! Manual check of the API layer against the real e621, through the route the app would use
-//! (the saved Mullvad device, or direct when there is none).
+//! Manual check of the API layer against the real e621, through the route the app would use on
+//! a first run (the saved Mullvad device at `jp-tyo`, or direct when there is none).
 //!
 //!   cargo run --example api_probe -- [tags]
 //!
 //! Prints what each call returned, so a change in e621's responses shows up as a decode error.
 
-use std::{env, error::Error, time::Instant};
+use std::{env, error::Error, sync::Arc, time::Instant};
 
 use tailgate_lib::{
     api::{Api, PostSearch},
     network::{Connection, Network, UserAgent},
     secrets,
+    settings::Settings,
 };
 
 #[tokio::main]
@@ -22,9 +23,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let tags = if tags.is_empty() { "wolf".into() } else { tags };
 
     secrets::init()?;
-    let network = Network::start().await?;
-    network.connect_saved().await;
-    match network.connection() {
+    // No settings file: the first-run choice, without touching the app's own settings.
+    let scratch = env::temp_dir().join("tailgate-api-probe");
+    let settings = Arc::new(Settings::load(scratch.join("settings.json")));
+    let network = Arc::new(Network::start(settings, scratch.join("relays.json")).await?);
+    tokio::spawn(Arc::clone(&network).run());
+    let connection = network
+        .watch_connection()
+        .wait_for(|connection| *connection != Connection::Connecting)
+        .await?
+        .clone();
+    match connection {
         connection @ (Connection::Direct | Connection::Tunnel { .. }) => {
             println!("route: {connection:?}");
         }

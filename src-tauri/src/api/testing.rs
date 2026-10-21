@@ -22,6 +22,16 @@ pub(crate) struct Received {
     pub(crate) user_agent: String,
     pub(crate) authorization: Option<String>,
     pub(crate) body: String,
+    head: String,
+}
+
+impl Received {
+    pub(crate) fn header(&self, name: &str) -> Option<&str> {
+        self.head.lines().find_map(|line| {
+            let (key, value) = line.split_once(": ")?;
+            key.eq_ignore_ascii_case(name).then_some(value)
+        })
+    }
 }
 
 pub(crate) fn json_response(status: &str, body: &str) -> String {
@@ -71,16 +81,16 @@ pub(crate) async fn serve(responses: Vec<String>) -> (String, mpsc::UnboundedRec
                     assert_ne!(read, 0, "the client closed before finishing its body");
                     request.extend_from_slice(&buffer[..read]);
                 }
-                sender
-                    .send(Received {
-                        at: Instant::now(),
-                        method: head.split(' ').next().unwrap().to_owned(),
-                        target: head.split(' ').nth(1).unwrap().to_owned(),
-                        user_agent: header("user-agent").unwrap_or_default(),
-                        authorization: header("authorization"),
-                        body: String::from_utf8(request[end..end + length].to_vec()).unwrap(),
-                    })
-                    .unwrap();
+                // A test that does not look at the requests drops the receiver; that is fine.
+                let _ = sender.send(Received {
+                    at: Instant::now(),
+                    method: head.split(' ').next().unwrap().to_owned(),
+                    target: head.split(' ').nth(1).unwrap().to_owned(),
+                    user_agent: header("user-agent").unwrap_or_default(),
+                    authorization: header("authorization"),
+                    body: String::from_utf8(request[end..end + length].to_vec()).unwrap(),
+                    head,
+                });
                 let response = responses
                     .lock()
                     .unwrap()

@@ -5,8 +5,10 @@ mod commands;
 mod download;
 mod media;
 pub mod network;
+mod relays;
 mod search;
 pub mod secrets;
+pub mod settings;
 pub mod tunnel;
 
 use std::sync::Arc;
@@ -17,6 +19,7 @@ use tokio::sync::watch;
 use account::Account;
 use api::Api;
 use network::{Network, UserAgent};
+use settings::Settings;
 
 pub fn run() {
     tracing_subscriber::fmt()
@@ -44,7 +47,14 @@ pub fn run() {
         })
         .setup(|app| {
             secrets::init()?;
-            let network = Arc::new(tauri::async_runtime::block_on(Network::start())?);
+            let settings = Arc::new(Settings::load(
+                app.path().app_config_dir()?.join("settings.json"),
+            ));
+            let network = Arc::new(tauri::async_runtime::block_on(Network::start(
+                Arc::clone(&settings),
+                app.path().app_cache_dir()?.join("relays.json"),
+            ))?);
+            app.manage(settings);
             let user_agent = UserAgent::new();
             let api = Arc::new(Api::new(network.http().clone(), user_agent.clone()));
             let account = Arc::new(Account::new(Arc::clone(&api)));
@@ -71,7 +81,7 @@ pub fn run() {
             forward(app.handle(), "account-changed", account.watch());
             let connection = network.watch_connection();
             tauri::async_runtime::spawn(async move { account.run(connection).await });
-            tauri::async_runtime::spawn(async move { network.connect_saved().await });
+            tauri::async_runtime::spawn(network.run());
             Ok(())
         })
         .run(tauri::generate_context!())

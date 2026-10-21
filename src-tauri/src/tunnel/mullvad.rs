@@ -1,7 +1,7 @@
 //! The few Mullvad API calls needed to turn an account number into a WireGuard configuration.
 //! Paths and payloads follow mullvadvpn-app's `mullvad-api` crate.
 
-use std::net::Ipv4Addr;
+use std::{collections::BTreeMap, net::Ipv4Addr};
 
 use base64::{Engine, engine::general_purpose::STANDARD};
 use gotatun::x25519::{PublicKey, StaticSecret};
@@ -14,6 +14,11 @@ const API: &str = "https://api.mullvad.net";
 const TUNNEL_DNS: Ipv4Addr = Ipv4Addr::new(10, 64, 0, 1);
 const WIREGUARD_PORT: u16 = 51820;
 
+/// Error codes of the Mullvad API, as mullvadvpn-app's `mullvad-api` names them.
+pub const INVALID_ACCOUNT: &str = "INVALID_ACCOUNT";
+pub const MAX_DEVICES_REACHED: &str = "MAX_DEVICES_REACHED";
+pub const DEVICE_NOT_FOUND: &str = "DEVICE_NOT_FOUND";
+
 #[derive(Debug, thiserror::Error)]
 pub enum MullvadError {
     #[error("network error: {0}")]
@@ -22,6 +27,12 @@ pub enum MullvadError {
     Api { status: u16, code: String },
     #[error("unexpected Mullvad response: {0}")]
     Response(String),
+}
+
+impl MullvadError {
+    pub fn is_code(&self, expected: &str) -> bool {
+        matches!(self, Self::Api { code, .. } if code == expected)
+    }
 }
 
 /// A WireGuard key registered on the account. Kept in the credential store so restarts reuse it
@@ -34,7 +45,7 @@ pub struct RegisteredDevice {
     pub ipv4: Ipv4Addr,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Relay {
     pub hostname: String,
     pub location: String,
@@ -43,13 +54,48 @@ pub struct Relay {
     pub public_key: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Location {
+    pub country: String,
+    pub city: String,
+}
+
+/// The WireGuard part of Mullvad's relay list, with the names of the locations it uses.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RelayList {
+    pub relays: Vec<Relay>,
+    /// Keyed by location code, as in [`Relay::location`] (`jp-tyo`).
+    pub locations: BTreeMap<String, Location>,
+}
+
+/// A fetch of the relay list made with the entity tag of the copy at hand.
+pub enum Fetched {
+    Changed {
+        list: RelayList,
+        etag: Option<String>,
+    },
+    NotModified,
+}
+
 pub struct Mullvad {
     http: reqwest::Client,
+    base: String,
 }
 
 impl Mullvad {
     pub fn new(http: reqwest::Client) -> Self {
-        Self { http }
+        Self {
+            http,
+            base: API.to_owned(),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn with_base(http: reqwest::Client, base: String) -> Self {
+        Self {
+            http,
+            base: base.trim_end_matches('/').to_owned(),
+        }
     }
 
     pub async fn access_token(&self, account_number: &str) -> Result<String, MullvadError> {
@@ -59,7 +105,7 @@ impl Mullvad {
         }
         let response = self
             .http
-            .post(format!("{API}/auth/v1/token"))
+            .post(format!("{}/auth/v1/token", self.base))
             .json(&serde_json::json!({ "account_number": account_number }))
             .send()
             .await?;
@@ -83,7 +129,7 @@ impl Mullvad {
 
         let response = self
             .http
-            .post(format!("{API}/accounts/v1/devices"))
+            .post(format!("{}/accounts/v1/devices", self.base))
             .bearer_auth(access_token)
             .json(&serde_json::json!({ "pubkey": STANDARD.encode(public_key.as_bytes()), "hijack_dns": false }))
             .send()
@@ -112,29 +158,70 @@ impl Mullvad {
     ) -> Result<(), MullvadError> {
         let response = self
             .http
-            .delete(format!("{API}/accounts/v1/devices/{device_id}"))
+            .delete(format!("{}/accounts/v1/devices/{device_id}", self.base))
             .bearer_auth(access_token)
             .send()
             .await?;
         checked(response).await.map(|_| ())
     }
 
-    pub async fn relays(&self) -> Result<Vec<Relay>, MullvadError> {
+    /// The account's paid-until time, as the API gives it (RFC 3339).
+    pub async fn account_expiry(&self, access_token: &str) -> Result<String, MullvadError> {
         #[derive(Deserialize)]
-        struct RelayList {
+        struct AccountData {
+            expiry: String,
+        }
+        let response = self
+            .http
+            .get(format!("{}/accounts/v1/accounts/me", self.base))
+            .bearer_auth(access_token)
+            .send()
+            .await?;
+        Ok(checked(response).await?.json::<AccountData>().await?.expiry)
+    }
+
+    pub async fn relays(&self) -> Result<RelayList, MullvadError> {
+        match self.relays_since(None).await? {
+            Fetched::Changed { list, .. } => Ok(list),
+            Fetched::NotModified => Err(MullvadError::Response(
+                "304 for an unconditional request".into(),
+            )),
+        }
+    }
+
+    /// With the tag of a saved copy, an unchanged list costs no download (about 600 KB otherwise).
+    pub async fn relays_since(&self, etag: Option<&str>) -> Result<Fetched, MullvadError> {
+        #[derive(Deserialize)]
+        struct Response {
+            locations: BTreeMap<String, Location>,
             wireguard: WireGuard,
         }
         #[derive(Deserialize)]
         struct WireGuard {
             relays: Vec<Relay>,
         }
-        let response = self.http.get(format!("{API}/app/v1/relays")).send().await?;
-        Ok(checked(response)
-            .await?
-            .json::<RelayList>()
-            .await?
-            .wireguard
-            .relays)
+        let mut request = self.http.get(format!("{}/app/v1/relays", self.base));
+        if let Some(etag) = etag {
+            request = request.header(reqwest::header::IF_NONE_MATCH, etag);
+        }
+        let response = request.send().await?;
+        if response.status() == reqwest::StatusCode::NOT_MODIFIED {
+            return Ok(Fetched::NotModified);
+        }
+        let response = checked(response).await?;
+        let etag = response
+            .headers()
+            .get(reqwest::header::ETAG)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let body: Response = response.json().await?;
+        Ok(Fetched::Changed {
+            list: RelayList {
+                relays: body.wireguard.relays,
+                locations: body.locations,
+            },
+            etag,
+        })
     }
 }
 

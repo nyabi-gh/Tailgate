@@ -6,6 +6,8 @@ pub(crate) const SERVICE: &str = "pro.tb.nyabi.Tailgate";
 
 pub const MULLVAD_ACCOUNT: &str = "mullvad-account";
 pub const MULLVAD_DEVICE: &str = "mullvad-device";
+/// An imported wg-quick `.conf`, as the file had it: it holds the private key.
+pub const WIREGUARD_CONFIG: &str = "wireguard-config";
 pub const E621_ACCOUNT: &str = "e621-account";
 
 /// Must run once before any other call in this module.

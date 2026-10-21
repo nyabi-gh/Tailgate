@@ -64,7 +64,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    let relays = mullvad.relays().await?;
+    let relays = mullvad.relays().await?.relays;
     let relay = relays
         .iter()
         .find(|relay| relay.active && relay.location.starts_with(location))

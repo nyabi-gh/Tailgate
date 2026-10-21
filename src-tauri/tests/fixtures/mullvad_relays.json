@@ -1,0 +1,129 @@
+{
+  "locations": {
+    "jp-tyo": {
+      "country": "Japan",
+      "city": "Tokyo",
+      "latitude": 35.685,
+      "longitude": 139.751389
+    },
+    "jp-osa": {
+      "country": "Japan",
+      "city": "Osaka",
+      "latitude": 34.672314,
+      "longitude": 135.484802
+    },
+    "se-sto": {
+      "country": "Sweden",
+      "city": "Stockholm",
+      "latitude": 59.3289,
+      "longitude": 18.0649
+    },
+    "us-nyc": {
+      "country": "USA",
+      "city": "New York, NY",
+      "latitude": 40.73061,
+      "longitude": -73.935242
+    },
+    "br-sao": {
+      "country": "Brazil",
+      "city": "Sao Paulo",
+      "latitude": -23.533773,
+      "longitude": -46.62529
+    }
+  },
+  "wireguard": {
+    "relays": [
+      {
+        "hostname": "jp-tyo-wg-001",
+        "location": "jp-tyo",
+        "active": true,
+        "owned": false,
+        "provider": "DataPacket",
+        "ipv4_addr_in": "138.199.21.239",
+        "public_key": "AUo2zhQ0wCDy3/jmZgOe4QMncWWqrdME7BbY2UlkgyI=",
+        "ipv6_addr_in": "2a02:6ea0:d31c::a15f"
+      },
+      {
+        "hostname": "jp-tyo-wg-002",
+        "location": "jp-tyo",
+        "active": true,
+        "owned": false,
+        "provider": "DataPacket",
+        "ipv4_addr_in": "138.199.21.226",
+        "public_key": "zdlqydCbeR7sG1y5L8sS65X1oOtRKvfVbAuFgqEGhi4=",
+        "ipv6_addr_in": "2a02:6ea0:d31b::a14f"
+      },
+      {
+        "hostname": "jp-osa-wg-101",
+        "location": "jp-osa",
+        "active": true,
+        "owned": true,
+        "provider": "xtom",
+        "ipv4_addr_in": "194.127.166.2",
+        "public_key": "qdFG9butVjZdtGFeQHuNftvf6ZmISf2J+v167rcPDU4=",
+        "ipv6_addr_in": "2a07:d883:600:1::f001"
+      },
+      {
+        "hostname": "jp-osa-wg-102",
+        "location": "jp-osa",
+        "active": true,
+        "owned": true,
+        "provider": "xtom",
+        "ipv4_addr_in": "194.127.166.81",
+        "public_key": "4Gl6OMUtsLEDIrg23j/COdpKsCi7W9tzM4zvBPXOy18=",
+        "ipv6_addr_in": "2a07:d883:600:2::f001"
+      },
+      {
+        "hostname": "se-sto-wg-001",
+        "location": "se-sto",
+        "active": true,
+        "owned": true,
+        "provider": "31173",
+        "ipv4_addr_in": "185.195.233.76",
+        "public_key": "MkP/Jytkg51/Y/EostONjIN6YaFRpsAYiNKMX27/CAY=",
+        "ipv6_addr_in": "2a03:1b20:4:f011::999f"
+      },
+      {
+        "hostname": "se-sto-wg-002",
+        "location": "se-sto",
+        "active": true,
+        "owned": true,
+        "provider": "31173",
+        "ipv4_addr_in": "185.65.135.67",
+        "public_key": "q2ZZPfumPaRVl4DJfzNdQF/GHfe6BYAzQ2GZZHb6rmI=",
+        "ipv6_addr_in": "2a03:1b20:4:f011::a02f"
+      },
+      {
+        "hostname": "us-nyc-wg-001",
+        "location": "us-nyc",
+        "active": true,
+        "owned": true,
+        "provider": "xtom",
+        "ipv4_addr_in": "23.165.56.3",
+        "public_key": "8kBm0P9xz3cXVn3so1czm5mLv0dEcrM6vFCOlozQ7Hk=",
+        "ipv6_addr_in": "2a07:d883:705:1::f001"
+      },
+      {
+        "hostname": "us-nyc-wg-002",
+        "location": "us-nyc",
+        "active": true,
+        "owned": true,
+        "provider": "xtom",
+        "ipv4_addr_in": "23.165.8.3",
+        "public_key": "xtX5Y0+E54jvIvubYLdTwMjCYQlBrmgNaL1tJNQyFlc=",
+        "ipv6_addr_in": "2a07:d883:705:2::f001"
+      },
+      {
+        "hostname": "br-sao-wg-302",
+        "location": "br-sao",
+        "active": false,
+        "owned": false,
+        "provider": "HostRoyale",
+        "ipv4_addr_in": "103.139.178.63",
+        "public_key": "Xv1QvURPbgywITL6MNVhbYtfZXTm0lR98SPaf3AXeCc=",
+        "ipv6_addr_in": "2a06:3040:10:610::f101"
+      }
+    ],
+    "ipv4_gateway": "10.64.0.1"
+  }
+}
