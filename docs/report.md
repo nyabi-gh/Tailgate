@@ -93,6 +93,7 @@ tailgate/
         client.rs        e621 요청, UA, Basic 인증, 스로틀, 재시도
         models.rs        e621 원본 응답(serde) → 앱 모델 정규화
         endpoints.rs     posts, users/me, autocomplete, PostSearch(페이지 넘김) … (favorites, votes는 8번)
+      search.rs          열린 검색(PostSearch)들, 검색어 태그의 카테고리를 결과에서 찾기
       blacklist.rs       파서 + 평가기
       account.rs         API 키 저장/삭제(키체인 `e621-account`), 로그인·로그아웃, 시작 시 복원·확인, 401 처리, 계정 상태(watch)
       settings.rs        설정 JSON (앱 설정 디렉터리)
@@ -110,7 +111,10 @@ tailgate/
       i18n/              en.ts(기준), ko.ts, 현재 언어 상태
       views.ts           사이드바 화면 목록
       ipc.ts             invoke 래퍼 (명령 이름·타입을 한곳에)
-      layout.ts          justified 행 계산 (순수 함수)
+      layout.ts          justified 행 계산, 썸네일 크기 범위 (순수 함수, vitest)
+      search.svelte.ts   검색 상태 (시작·다음 페이지·다시 시도), 알게 된 태그 카테고리
+      posts.ts           Rust 모델의 TS 타입, API 오류 코드
+      tags.ts            태그 토큰 해석(제외·메타태그), 카테고리 색
       keys.ts            키보드 단축키
     state/               검색, 계정, 설정 상태 (Svelte runes 모듈)
     views/               Search, Viewer, Favorites, Settings, Login
@@ -119,7 +123,7 @@ tailgate/
 ```
 
 원칙:
-- **로직은 Rust, 화면은 Svelte.** 블랙리스트, 페이지네이션 커서, 응답 정규화, DText 파싱(2단계)은 Rust에서 하고 `cargo test`로 고정한다. 프런트엔드 테스트는 `layout.ts`처럼 순수 함수만 둔다.
+- **로직은 Rust, 화면은 Svelte.** 블랙리스트, 페이지네이션 커서, 응답 정규화, DText 파싱(2단계)은 Rust에서 하고 `cargo test`로 고정한다. 프런트엔드 테스트는 `layout.ts`처럼 순수 함수만 두고 vitest(`npm test`)로 돌린다.
 - Repository 계층, DI 컨테이너, 상태 관리 라이브러리는 쓰지 않는다. 상태는 Svelte runes 모듈 몇 개면 충분하다.
 - Rust↔TS 타입은 처음에는 손으로 맞춘다(모델이 10개 안팎). 어긋나는 일이 생기면 `ts-rs`로 생성하는 방식으로 바꾼다.
 - Rust 코드는 `cargo fmt`(기본 설정)와 `cargo clippy`를 통과시킨다.
@@ -140,7 +144,7 @@ Svelte 화면 → ipc.ts → invoke("next_page", {search})
 - **페이지 넘김**: 검색 하나가 Rust의 `PostSearch` 하나다(태그, 다음 페이지, 이미 돌려준 id). 태그에 `order:`가 없으면 `page=b<받은 것 중 가장 작은 id>`, 있으면 `page=N`(750까지). 한 페이지는 100개이고, 그보다 적게 오면 끝이다. 프런트엔드는 검색 id만 들고 있는다. 처음에는 불투명한 커서 문자열을 주고받으려 했지만, 중복 제거에 id 집합이라는 상태가 필요해 Rust가 검색 상태를 갖기로 했다(2026-10-19).
 - **한 페이지가 전부 블랙리스트로 숨겨지면** `PostSearch`가 다음 페이지를 이어 받는다(최대 횟수 제한, 6번).
 - **중복 제거**: `PostSearch`가 돌려준 id 집합으로 거른다. 페이지 번호 방식에서 게시물이 다음 페이지로 밀려 다시 오는 경우다.
-- **미디어 선택**(`media.ts` 한곳): 썸네일 `preview` → 그리드 행 높이가 크면 `sample`, 뷰어는 `sample` → 원본은 요청/확대 시 `file`. 동영상은 `720p` → `480p` → `variants.mp4` → 원본 WebM 순. URL이 null이면 플레이스홀더.
+- **미디어 선택**(`media.ts` 한곳): 썸네일은 `preview`, 행 높이가 300px 이상이면 `sample`(Retina에서 256px 미리보기가 흐려지는 크기. `sample`은 몇 배 크므로 그때만), 뷰어는 `sample` → 원본은 요청/확대 시 `file`. 동영상은 `720p` → `480p` → `variants.mp4` → 원본 WebM 순. URL이 null이면 플레이스홀더.
 - **원격 미디어는 연결이 준비된 뒤에만 요청한다.** 준비 전 요청은 킬 스위치에 막혀 실패하고, 웹뷰가 실패를 기억해 다시 요청하지 않는다. 화면은 `connection.svelte.ts`의 `canLoadRemote()`를 보고 렌더링한다.
 
 ## 6. 연결 (앱 내부 전용 VPN)
