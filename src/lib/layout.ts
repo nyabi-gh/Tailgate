@@ -1,6 +1,11 @@
 /** The thumbnail size range, as the cell width the grid aims for, in CSS pixels. */
 export const CELL_WIDTH = { min: 100, max: 360, initial: 180 };
 
+/** Whole pixels within the range; also for a saved width from an older range. */
+export function clampCellWidth(width: number): number {
+  return Math.round(Math.min(CELL_WIDTH.max, Math.max(CELL_WIDTH.min, width)));
+}
+
 /** Cells are 3:4 portrait, since most e621 art is taller than wide and gets cropped less so. */
 export const CELL_ASPECT = 3 / 4;
 

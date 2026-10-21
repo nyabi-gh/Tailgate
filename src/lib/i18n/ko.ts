@@ -40,6 +40,8 @@ const ko: Messages = {
     general: "일반",
     language: "언어",
     languages: { system: "시스템", en: "English", ko: "한국어" },
+    browse: "보기",
+    thumbnailSize: "썸네일 크기",
     account: "계정",
     e621: "e621",
     notSignedIn: "로그인 안 됨",

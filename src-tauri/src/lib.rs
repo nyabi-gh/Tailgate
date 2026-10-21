@@ -58,6 +58,8 @@ pub fn run() {
             commands::download,
             commands::general_settings,
             commands::set_general_settings,
+            commands::browse_settings,
+            commands::set_browse_settings,
             commands::quit
         ])
         .register_asynchronous_uri_scheme_protocol(media::SCHEME, |context, request, responder| {

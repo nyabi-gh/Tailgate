@@ -15,13 +15,13 @@
   import { CELL_WIDTH } from "./lib/layout";
   import { isMac } from "./lib/platform";
   import { favorites, startFavorites, startSearch, tagSearch, type PostList } from "./lib/search.svelte";
+  import { cellWidth, setCellWidth } from "./lib/settings.svelte";
   import type { Post } from "./lib/posts";
   import { closeViewer, openPost, viewer } from "./lib/viewer.svelte";
   import type { View } from "./lib/views";
 
   let view = $state<View>("search");
   let tags = $state<string[]>([]);
-  let cellWidth = $state(CELL_WIDTH.initial);
   let tagInput: TagInput | undefined = $state();
   let searchGrid: Grid | undefined = $state();
   let favoritesGrid: Grid | undefined = $state();
@@ -144,7 +144,7 @@
             min={CELL_WIDTH.min}
             max={CELL_WIDTH.max}
             step="10"
-            value={cellWidth}
+            value={cellWidth()}
             oninput={(event) => activeGrid?.resize(Number(event.currentTarget.value))}
           />
         </label>
@@ -158,7 +158,7 @@
           <Grid
             bind:this={searchGrid}
             list={tagSearch}
-            bind:cellWidth
+            bind:cellWidth={cellWidth, setCellWidth}
             {transitionId}
             empty={m().search.noResults}
             onopen={(post) => open(tagSearch, searchGrid, post)}
@@ -180,7 +180,7 @@
           <Grid
             bind:this={favoritesGrid}
             list={favorites}
-            bind:cellWidth
+            bind:cellWidth={cellWidth, setCellWidth}
             {transitionId}
             empty={m().favorites.empty}
             onopen={(post) => open(favorites, favoritesGrid, post)}

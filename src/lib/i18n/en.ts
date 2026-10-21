@@ -38,6 +38,8 @@ const en = {
     general: "General",
     language: "Language",
     languages: { system: "System", en: "English", ko: "한국어" },
+    browse: "Browsing",
+    thumbnailSize: "Thumbnail size",
     account: "Account",
     e621: "e621",
     notSignedIn: "Not signed in",

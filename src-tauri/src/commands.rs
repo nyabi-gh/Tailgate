@@ -15,7 +15,7 @@ use crate::{
     network::{Connection, ConnectionDetails, Network, SettingsChangeError},
     relays::LocationChoice,
     search::{SearchError, SearchPage, Searches},
-    settings::{ConnectionMode, General, Settings},
+    settings::{Browse, ConnectionMode, General, Settings},
 };
 
 #[tauri::command]
@@ -211,6 +211,22 @@ pub fn set_general_settings(
     general: General,
 ) -> Result<(), SettingsChangeError> {
     settings.set_general(general).map_err(|error| {
+        tracing::error!("{error}");
+        SettingsChangeError::Settings
+    })
+}
+
+#[tauri::command]
+pub fn browse_settings(settings: State<'_, Arc<Settings>>) -> Browse {
+    settings.browse()
+}
+
+#[tauri::command]
+pub fn set_browse_settings(
+    settings: State<'_, Arc<Settings>>,
+    browse: Browse,
+) -> Result<(), SettingsChangeError> {
+    settings.set_browse(browse).map_err(|error| {
         tracing::error!("{error}");
         SettingsChangeError::Settings
     })

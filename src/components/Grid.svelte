@@ -4,7 +4,7 @@
   import { canLoadRemote } from "../lib/connection.svelte";
   import { apiErrorMessage } from "../lib/errors";
   import { m } from "../lib/i18n/index.svelte";
-  import { CELL_WIDTH, cellPosition, grid, rowOf, visibleRange } from "../lib/layout";
+  import { cellPosition, clampCellWidth, grid, rowOf, visibleRange } from "../lib/layout";
   import { isMac } from "../lib/platform";
   import type { ApiErrorCode, Post } from "../lib/posts";
   import type { PostList } from "../lib/search.svelte";
@@ -90,7 +90,7 @@
 
   export async function resize(next: number) {
     const [anchor] = visibleRange(layout, list.posts.length, scrollTop - PADDING, scrollTop - PADDING);
-    cellWidth = Math.round(Math.min(CELL_WIDTH.max, Math.max(CELL_WIDTH.min, next)));
+    cellWidth = clampCellWidth(next);
     if (anchor >= list.posts.length) return;
     await tick();
     scroller.scrollTop = rowOf(layout, anchor) * (layout.cellHeight + layout.gap) + PADDING;

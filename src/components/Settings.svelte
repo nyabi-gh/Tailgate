@@ -18,7 +18,8 @@
   } from "../lib/connection.svelte";
   import { settingsChangeMessage } from "../lib/errors";
   import { currentLocale, m, type Language } from "../lib/i18n/index.svelte";
-  import { changeGeneralSettings, generalSettings } from "../lib/settings.svelte";
+  import { CELL_WIDTH } from "../lib/layout";
+  import { cellWidth, changeGeneralSettings, generalSettings, setCellWidth } from "../lib/settings.svelte";
   import ConnectionStatus from "./ConnectionStatus.svelte";
   import MullvadSignInSheet from "./MullvadSignInSheet.svelte";
 
@@ -152,6 +153,25 @@
         <CircleAlert size={16} strokeWidth={1.75} class="mt-px shrink-0" />{settingsChangeMessage(generalError)}
       </p>
     {/if}
+  </section>
+
+  <section class="flex flex-col gap-2">
+    <h2 class="px-1 font-strong">{m().settings.browse}</h2>
+    <div class={group}>
+      <div class={row}>
+        <label class={label} for="thumbnail-size">{m().settings.thumbnailSize}</label>
+        <input
+          id="thumbnail-size"
+          type="range"
+          class="w-48 accent-focus"
+          min={CELL_WIDTH.min}
+          max={CELL_WIDTH.max}
+          step="10"
+          value={cellWidth()}
+          oninput={(event) => setCellWidth(Number(event.currentTarget.value))}
+        />
+      </div>
+    </div>
   </section>
 
   <section class="flex flex-col gap-2">

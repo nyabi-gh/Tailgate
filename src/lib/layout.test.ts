@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CELL_ASPECT, cellPosition, grid, rowOf, visibleRange } from "./layout";
+import { CELL_ASPECT, CELL_WIDTH, cellPosition, clampCellWidth, grid, rowOf, visibleRange } from "./layout";
 
 describe("grid", () => {
   it("fits as many columns as the target width allows and fills the width exactly", () => {
@@ -55,5 +55,13 @@ describe("visibleRange", () => {
   it("finds the row of an item", () => {
     expect(rowOf(layout, 0)).toBe(0);
     expect(rowOf(layout, 7)).toBe(1);
+  });
+});
+
+describe("clampCellWidth", () => {
+  it("keeps widths within the range in whole pixels", () => {
+    expect(clampCellWidth(240.4)).toBe(240);
+    expect(clampCellWidth(CELL_WIDTH.min - 50)).toBe(CELL_WIDTH.min);
+    expect(clampCellWidth(CELL_WIDTH.max + 50)).toBe(CELL_WIDTH.max);
   });
 });

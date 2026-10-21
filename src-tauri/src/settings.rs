@@ -19,6 +19,8 @@ pub struct SettingsFile {
     pub connection: Option<ConnectionSettings>,
     #[serde(default)]
     pub general: General,
+    #[serde(default)]
+    pub browse: Browse,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -28,6 +30,14 @@ pub struct General {
     /// The user has said they are 18 or older, which e621's terms require; asked on the first
     /// run only.
     pub adult: bool,
+}
+
+/// What the UI keeps between runs; it owns the limits of these values.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Browse {
+    /// The grid's cell width in CSS pixels, once the user has changed it.
+    pub cell_width: Option<u16>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -128,26 +138,42 @@ impl Settings {
         Ok(())
     }
 
-    /// The defaults while nothing is saved or the file cannot be loaded.
     pub fn general(&self) -> General {
+        self.section(|file| file.general.clone())
+    }
+
+    pub fn set_general(&self, general: General) -> Result<(), SettingsError> {
+        self.change_section(|file| file.general = general)
+    }
+
+    pub fn browse(&self) -> Browse {
+        self.section(|file| file.browse.clone())
+    }
+
+    pub fn set_browse(&self, browse: Browse) -> Result<(), SettingsError> {
+        self.change_section(|file| file.browse = browse)
+    }
+
+    /// The defaults while nothing is saved or the file cannot be loaded.
+    fn section<T: Default>(&self, read: impl FnOnce(&SettingsFile) -> T) -> T {
         self.lock()
             .as_ref()
             .ok()
             .and_then(Option::as_ref)
-            .map(|file| file.general.clone())
+            .map(read)
             .unwrap_or_default()
     }
 
-    /// Unlike the connection, this never replaces a file that could not be loaded: the
-    /// connection saved in it would be lost, and a damaged file keeps the connection blocked
-    /// (docs/report.md §6.3, rule 1).
-    pub fn set_general(&self, general: General) -> Result<(), SettingsError> {
+    /// Unlike the connection, the other sections never replace a file that could not be
+    /// loaded: the connection saved in it would be lost, and a damaged file keeps the
+    /// connection blocked (docs/report.md §6.3, rule 1).
+    fn change_section(&self, change: impl FnOnce(&mut SettingsFile)) -> Result<(), SettingsError> {
         let mut file = self.lock();
         let Ok(current) = &*file else {
             return Err(SettingsError::NotLoaded);
         };
         let mut next = current.clone().unwrap_or_default();
-        next.general = general;
+        change(&mut next);
         write(&self.path, &next).map_err(SettingsError::Write)?;
         *file = Ok(Some(next));
         Ok(())
@@ -275,6 +301,33 @@ mod tests {
     }
 
     #[test]
+    fn each_section_keeps_the_others() {
+        let dir = TempDir::new();
+        let path = dir.join("settings.json");
+        let settings = Settings::load(path.clone());
+        let general = General {
+            language: Language::En,
+            adult: true,
+        };
+        let browse = Browse {
+            cell_width: Some(240),
+        };
+        settings.set_general(general.clone()).unwrap();
+        settings.set_browse(browse.clone()).unwrap();
+        settings
+            .set_connection(ConnectionSettings::new(ConnectionMode::Direct))
+            .unwrap();
+
+        let loaded = Settings::load(path);
+        assert_eq!(loaded.general(), general);
+        assert_eq!(loaded.browse(), browse);
+        assert_eq!(
+            loaded.connection().unwrap().unwrap().mode,
+            ConnectionMode::Direct
+        );
+    }
+
+    #[test]
     fn general_settings_leave_a_damaged_file_alone() {
         let dir = TempDir::new();
         let path = dir.join("settings.json");
@@ -285,6 +338,10 @@ mod tests {
         let saved = settings.set_general(General {
             language: Language::En,
             adult: true,
+        });
+        assert!(matches!(saved, Err(SettingsError::NotLoaded)));
+        let saved = settings.set_browse(Browse {
+            cell_width: Some(200),
         });
         assert!(matches!(saved, Err(SettingsError::NotLoaded)));
         assert_eq!(fs::read_to_string(&path).unwrap(), "{ not json");
@@ -300,5 +357,6 @@ mod tests {
         let connection = settings.connection().unwrap().unwrap();
         assert_eq!(connection, ConnectionSettings::new(ConnectionMode::Mullvad));
         assert_eq!(settings.general(), General::default());
+        assert_eq!(settings.browse(), Browse::default());
     }
 }
