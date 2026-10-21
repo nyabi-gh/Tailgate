@@ -23,6 +23,8 @@ pub struct SettingsFile {
     pub browse: Browse,
     #[serde(default)]
     pub downloads: DownloadSettings,
+    #[serde(default)]
+    pub cache: CacheSettings,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -51,6 +53,13 @@ pub struct DownloadSettings {
     pub folder: Option<PathBuf>,
     /// A file name rule such as `{id}_{artist}`; see `download::name`.
     pub name: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CacheSettings {
+    /// The most the image cache keeps on disk; `None` follows the app's default.
+    pub limit_mb: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -173,6 +182,14 @@ impl Settings {
 
     pub fn set_downloads(&self, downloads: DownloadSettings) -> Result<(), SettingsError> {
         self.change_section(|file| file.downloads = downloads)
+    }
+
+    pub fn cache(&self) -> CacheSettings {
+        self.section(|file| file.cache.clone())
+    }
+
+    pub fn set_cache(&self, cache: CacheSettings) -> Result<(), SettingsError> {
+        self.change_section(|file| file.cache = cache)
     }
 
     /// The defaults while nothing is saved or the file cannot be loaded.
@@ -341,6 +358,10 @@ mod tests {
         settings.set_general(general.clone()).unwrap();
         settings.set_browse(browse.clone()).unwrap();
         settings.set_downloads(downloads.clone()).unwrap();
+        let cache = CacheSettings {
+            limit_mb: Some(512),
+        };
+        settings.set_cache(cache.clone()).unwrap();
         settings
             .set_connection(ConnectionSettings::new(ConnectionMode::Direct))
             .unwrap();
@@ -349,6 +370,7 @@ mod tests {
         assert_eq!(loaded.general(), general);
         assert_eq!(loaded.browse(), browse);
         assert_eq!(loaded.downloads(), downloads);
+        assert_eq!(loaded.cache(), cache);
         assert_eq!(
             loaded.connection().unwrap().unwrap().mode,
             ConnectionMode::Direct

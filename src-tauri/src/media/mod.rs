@@ -6,6 +6,7 @@
 //! User-Agent, is how the files are meant to be downloaded. See docs/research.md §7.
 
 mod blocks;
+mod disk;
 
 use std::sync::Arc;
 
@@ -16,8 +17,10 @@ use tauri::{
 
 use crate::network::UserAgent;
 use blocks::{BLOCK_SIZE, Block, BlockCache};
+pub use disk::{CacheUsage, ClearError, DiskCache};
 
 pub const SCHEME: &str = "media";
+pub const DEFAULT_DISK_LIMIT_MB: u32 = 1024;
 const ORIGIN: &str = "https://static1.e621.net/";
 const CACHE_CAPACITY: u64 = 256 * 1024 * 1024;
 
@@ -27,6 +30,7 @@ pub struct Media {
     user_agent: UserAgent,
     origin: String,
     blocks: BlockCache,
+    disk: Arc<DiskCache>,
 }
 
 pub fn handle(app: &AppHandle, request: Request<Vec<u8>>, responder: UriSchemeResponder) {
@@ -38,17 +42,27 @@ pub fn handle(app: &AppHandle, request: Request<Vec<u8>>, responder: UriSchemeRe
 }
 
 impl Media {
-    pub fn new(http: reqwest::Client, user_agent: UserAgent) -> Self {
-        Self::with_origin(http, user_agent, ORIGIN.to_owned())
+    pub fn new(http: reqwest::Client, user_agent: UserAgent, disk: Arc<DiskCache>) -> Self {
+        Self::with_origin(http, user_agent, disk, ORIGIN.to_owned())
     }
 
-    fn with_origin(http: reqwest::Client, user_agent: UserAgent, origin: String) -> Self {
+    fn with_origin(
+        http: reqwest::Client,
+        user_agent: UserAgent,
+        disk: Arc<DiskCache>,
+        origin: String,
+    ) -> Self {
         Self {
             http,
             user_agent,
             origin,
             blocks: BlockCache::new(CACHE_CAPACITY),
+            disk,
         }
+    }
+
+    pub fn disk(&self) -> &DiskCache {
+        &self.disk
     }
 
     async fn respond(
@@ -74,6 +88,17 @@ impl Media {
     }
 
     async fn whole(&self, path: &str) -> Result<Response<Vec<u8>>, StatusCode> {
+        let image_type = image_type(path);
+        if let Some(content_type) = image_type
+            && let Some(data) = self.disk.get(path).await
+        {
+            tracing::debug!("media {path} from disk");
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, content_type)
+                .body(data)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR);
+        }
         let response = self
             .http
             .get(format!("{}{path}", self.origin))
@@ -97,6 +122,11 @@ impl Media {
             tracing::warn!("media body for {path} failed: {error}");
             StatusCode::BAD_GATEWAY
         })?;
+        if image_type.is_some() && status == reqwest::StatusCode::OK {
+            let disk = Arc::clone(&self.disk);
+            let (path, data) = (path.to_owned(), body.clone());
+            tokio::spawn(async move { disk.put(&path, &data).await });
+        }
         builder
             .body(body.to_vec())
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
@@ -255,6 +285,22 @@ fn parse_content_range(value: &str) -> Option<(u64, u64, u64)> {
     ))
 }
 
+pub fn megabytes(count: u32) -> u64 {
+    u64::from(count) * 1024 * 1024
+}
+
+/// The images kept on disk, by extension; served again with the type static1 gives them.
+/// Videos are read in ranges and stay in memory blocks.
+fn image_type(path: &str) -> Option<&'static str> {
+    match path.rsplit_once('.')?.1 {
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "png" => Some("image/png"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
 /// Only file paths under static1's `data/` tree; anything else could turn the scheme into a way
 /// to make the app request arbitrary URLs.
 fn is_media_path(path: &str) -> bool {
@@ -285,7 +331,7 @@ fn empty_response(status: StatusCode) -> Response<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use std::{net::Ipv4Addr, time::Duration};
+    use std::{net::Ipv4Addr, path::PathBuf, time::Duration};
 
     use bytes::Bytes;
     use tokio::{
@@ -295,6 +341,7 @@ mod tests {
     };
 
     use super::*;
+    use crate::settings::testing::TempDir;
 
     const PATH: &str = "data/sample/36/a9/36a9487818d5a477adb0beed756b5c10_720p.mp4";
 
@@ -303,8 +350,11 @@ mod tests {
     }
 
     /// A static1 stand-in that answers single ranges like it does and reports each request's
-    /// `Range` header (empty when there is none).
-    async fn serve(file: Bytes) -> (Arc<Media>, mpsc::UnboundedReceiver<String>) {
+    /// `Range` header (empty when there is none). Its disk cache is `cache`.
+    async fn serve_with_cache(
+        file: Bytes,
+        cache: PathBuf,
+    ) -> (Arc<Media>, mpsc::UnboundedReceiver<String>) {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
         let origin = format!("http://{}/", listener.local_addr().unwrap());
         let (requests, received) = mpsc::unbounded_channel();
@@ -315,10 +365,20 @@ mod tests {
             }
         });
         let http = reqwest::Client::builder().no_proxy().build().unwrap();
+        let disk = Arc::new(DiskCache::new(cache, 1024 * 1024));
         (
-            Arc::new(Media::with_origin(http, UserAgent::new(), origin)),
+            Arc::new(Media::with_origin(http, UserAgent::new(), disk, origin)),
             received,
         )
+    }
+
+    /// Videos never reach the disk cache, so the tests of ranges need no folder for it.
+    async fn serve(file: Bytes) -> (Arc<Media>, mpsc::UnboundedReceiver<String>) {
+        serve_with_cache(
+            file,
+            std::env::temp_dir().join("tailgate-media-test-unused"),
+        )
+        .await
     }
 
     async fn answer(mut stream: TcpStream, file: Bytes, requests: mpsc::UnboundedSender<String>) {
@@ -367,7 +427,11 @@ mod tests {
     }
 
     async fn get(media: &Arc<Media>, range: Option<&str>) -> Response<Vec<u8>> {
-        let mut request = Request::builder().uri(format!("media://localhost/{PATH}"));
+        get_path(media, PATH, range).await
+    }
+
+    async fn get_path(media: &Arc<Media>, path: &str, range: Option<&str>) -> Response<Vec<u8>> {
+        let mut request = Request::builder().uri(format!("media://localhost/{path}"));
         if let Some(range) = range {
             request = request.header(header::RANGE, range);
         }
@@ -461,6 +525,34 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.body(), &file[..]);
         assert_eq!(next_request(&mut requests).await, "");
+    }
+
+    #[tokio::test]
+    async fn keeps_whole_images_on_disk_for_the_next_run() {
+        const IMAGE: &str = "data/preview/36/a9/36a9487818d5a477adb0beed756b5c10.jpg";
+        let dir = TempDir::new();
+        let file = file(1000);
+        let (media, mut requests) = serve_with_cache(file.clone(), dir.join("media")).await;
+        assert_eq!(get_path(&media, IMAGE, None).await.body(), &file[..]);
+        assert_eq!(next_request(&mut requests).await, "");
+        assert_eq!(get(&media, None).await.status(), StatusCode::OK);
+        assert_eq!(next_request(&mut requests).await, "");
+        let stored = async {
+            while media.disk().usage().await < 1000 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(5), stored)
+            .await
+            .expect("the image never reached the disk");
+
+        let (next_run, mut requests) = serve_with_cache(file.clone(), dir.join("media")).await;
+        let response = get_path(&next_run, IMAGE, None).await;
+        assert_eq!(response.body(), &file[..]);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "image/jpeg");
+        assert!(requests.try_recv().is_err());
+        // The video asked for whole above was not kept.
+        assert_eq!(next_run.disk().usage().await, 1000);
     }
 
     #[test]

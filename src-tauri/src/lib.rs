@@ -65,6 +65,9 @@ pub fn run() {
             commands::open_download_folder,
             commands::download_name_example,
             commands::set_download_name,
+            commands::cache_status,
+            commands::set_cache_limit,
+            commands::clear_cache,
             commands::quit
         ])
         .on_window_event(|window, event| {
@@ -95,12 +98,25 @@ pub fn run() {
             app.manage(Arc::new(download::Downloads::new(
                 network.http().clone(),
                 user_agent.clone(),
-                settings,
+                Arc::clone(&settings),
                 app.path().download_dir()?.join("Tailgate"),
             )));
+            let disk = Arc::new(media::DiskCache::new(
+                app.path().app_cache_dir()?.join("media"),
+                media::megabytes(
+                    settings
+                        .cache()
+                        .limit_mb
+                        .unwrap_or(media::DEFAULT_DISK_LIMIT_MB),
+                ),
+            ));
+            // Earlier runs may have kept many files; counting them should not hold up the window.
+            let scanning = Arc::clone(&disk);
+            tauri::async_runtime::spawn(async move { scanning.scan().await });
             app.manage(Arc::new(media::Media::new(
                 network.http().clone(),
                 user_agent,
+                disk,
             )));
             build_main_window(app)?;
 

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{
     account::{Account, AccountError, AccountState},
@@ -15,10 +15,11 @@ use crate::{
         DownloadDetails, DownloadError, DownloadRequest, Downloads, NameRuleError, Saved,
         TemplateError, example_name,
     },
+    media::{self, CacheUsage, ClearError, Media},
     network::{Connection, ConnectionDetails, Network, SettingsChangeError},
     relays::LocationChoice,
     search::{SearchError, SearchPage, Searches},
-    settings::{Browse, ConnectionMode, General, Settings},
+    settings::{Browse, CacheSettings, ConnectionMode, General, Settings},
 };
 
 #[tauri::command]
@@ -297,6 +298,38 @@ pub fn set_browse_settings(
         tracing::error!("{error}");
         SettingsChangeError::Settings
     })
+}
+
+/// Takes the app rather than borrowed state: an async command that borrows must return a
+/// `Result`, and this one cannot fail.
+#[tauri::command]
+pub async fn cache_status(app: AppHandle) -> CacheUsage {
+    let media = Arc::clone(app.state::<Arc<Media>>().inner());
+    media.disk().status().await
+}
+
+#[tauri::command]
+pub async fn set_cache_limit(
+    settings: State<'_, Arc<Settings>>,
+    media: State<'_, Arc<Media>>,
+    megabytes: u32,
+) -> Result<CacheUsage, SettingsChangeError> {
+    settings
+        .set_cache(CacheSettings {
+            limit_mb: Some(megabytes),
+        })
+        .map_err(|error| {
+            tracing::error!("{error}");
+            SettingsChangeError::Settings
+        })?;
+    media.disk().set_limit(media::megabytes(megabytes)).await;
+    Ok(media.disk().status().await)
+}
+
+#[tauri::command]
+pub async fn clear_cache(media: State<'_, Arc<Media>>) -> Result<CacheUsage, ClearError> {
+    media.disk().clear().await?;
+    Ok(media.disk().status().await)
 }
 
 #[tauri::command]
