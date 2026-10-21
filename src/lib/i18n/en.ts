@@ -38,6 +38,7 @@ const en = {
     modes: { direct: "Direct", wireGuard: "WireGuard file", mullvad: "Mullvad" },
     directNote: "The app's traffic goes out without a VPN. Some networks block e621.",
     tunnelNote: "Only this app's traffic goes through the VPN. Other apps are not affected.",
+    wireGuardNote: "Don't use the same file in another WireGuard app at the same time. The two would keep cutting each other off.",
     wireGuard: {
       file: "File",
       none: "None imported",

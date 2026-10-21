@@ -40,6 +40,7 @@ const ko: Messages = {
     modes: { direct: "직접", wireGuard: "WireGuard 파일", mullvad: "Mullvad" },
     directNote: "앱 트래픽이 VPN 없이 나갑니다. 네트워크에 따라 e621이 막혀 있을 수 있습니다.",
     tunnelNote: "이 앱의 트래픽만 VPN을 거칩니다. 다른 앱에는 영향이 없습니다.",
+    wireGuardNote: "같은 파일을 다른 WireGuard 앱에서 동시에 쓰지 마세요. 서로 연결을 끊게 됩니다.",
     wireGuard: {
       file: "파일",
       none: "가져온 파일 없음",

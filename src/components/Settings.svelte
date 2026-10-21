@@ -259,6 +259,9 @@
         {details.mode === "direct" ? m().settings.directNote : m().settings.tunnelNote}
       </p>
     {/if}
+    {#if details?.mode === "wireGuard"}
+      <p class="px-1 text-dim">{m().settings.wireGuardNote}</p>
+    {/if}
   </section>
 </div>
 
