@@ -25,6 +25,9 @@ pub struct SettingsFile {
 #[serde(rename_all = "camelCase", default)]
 pub struct General {
     pub language: Language,
+    /// The user has said they are 18 or older, which e621's terms require; asked on the first
+    /// run only.
+    pub adult: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -259,6 +262,7 @@ mod tests {
             .unwrap();
         let general = General {
             language: Language::Ko,
+            adult: true,
         };
         settings.set_general(general.clone()).unwrap();
 
@@ -280,6 +284,7 @@ mod tests {
 
         let saved = settings.set_general(General {
             language: Language::En,
+            adult: true,
         });
         assert!(matches!(saved, Err(SettingsError::NotLoaded)));
         assert_eq!(fs::read_to_string(&path).unwrap(), "{ not json");

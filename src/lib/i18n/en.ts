@@ -27,6 +27,13 @@ const en = {
       connectionLost: "The VPN connection was lost.",
     },
   },
+  ageCheck: {
+    title: "Adults only",
+    body: "e621 has sexually explicit content. Continue only if you are 18 or older and such content is legal where you live.",
+    confirm: "I'm 18 or Older",
+    quit: "Quit",
+    notSaved: "Could not save your answer. The app will ask again next time.",
+  },
   settings: {
     general: "General",
     language: "Language",

@@ -215,3 +215,8 @@ pub fn set_general_settings(
         SettingsChangeError::Settings
     })
 }
+
+#[tauri::command]
+pub fn quit(app: AppHandle) {
+    app.exit(0);
+}

@@ -29,6 +29,13 @@ const ko: Messages = {
       connectionLost: "VPN 연결이 끊겼습니다.",
     },
   },
+  ageCheck: {
+    title: "성인만 이용할 수 있습니다",
+    body: "e621에는 성적으로 노골적인 콘텐츠가 있습니다. 18세 이상이고 사는 곳에서 이런 콘텐츠가 합법일 때만 계속하세요.",
+    confirm: "18세 이상입니다",
+    quit: "종료",
+    notSaved: "답을 저장하지 못했습니다. 다음 실행 때 다시 묻습니다.",
+  },
   settings: {
     general: "일반",
     language: "언어",

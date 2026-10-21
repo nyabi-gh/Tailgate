@@ -1,6 +1,6 @@
 import { mount } from "svelte";
 import "./styles/app.css";
-import App from "./App.svelte";
+import Root from "./Root.svelte";
 import { watchAccount } from "./lib/account.svelte";
 import { watchDownloads } from "./lib/actions.svelte";
 import { watchConnection } from "./lib/connection.svelte";
@@ -23,4 +23,4 @@ if (!target) throw new Error("index.html is missing the #app element");
 const settingsRead = isTauri
   ? loadGeneralSettings().catch((error) => console.error("could not read the settings", error))
   : Promise.resolve();
-settingsRead.then(() => mount(App, { target }));
+settingsRead.then(() => mount(Root, { target }));
