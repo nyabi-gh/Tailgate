@@ -80,6 +80,7 @@ tailgate/
       media/
         mod.rs           media:// 프로토콜: static1 data/ 경로만, 앱 연결로 받아 응답, Range 처리
         blocks.rs        동영상 블록 캐시 (1MB 블록, LRU)
+        disk.rs          이미지 디스크 캐시 (앱 캐시 디렉터리의 `media/`, 한도, 오래 쓰지 않은 것부터 지움, 비우기)
       secrets.rs         OS 키체인 (keyring-core + 플랫폼 저장소)
       tunnel/
         mod.rs           Tunnel::start(핸드셰이크까지)/stop. 밖에서는 이것만 쓴다
@@ -97,9 +98,10 @@ tailgate/
       search.rs          화면마다 하나씩 열린 검색(태그 검색, 내 즐겨찾기), 검색어 태그의 카테고리를 결과에서 찾기
       blacklist.rs       파서 + 평가기 (e621ng의 블랙리스트 코드를 옮김)
       account.rs         API 키 저장/삭제(키체인 `e621-account`), 로그인·로그아웃, 시작 시 복원·확인, 401 처리, 계정 상태(watch)
-      settings.rs        설정 JSON (앱 설정 디렉터리의 `settings.json`). 9번에서 연결 설정, 10번에서 나머지
+      settings.rs        설정 JSON (앱 설정 디렉터리의 `settings.json`): 연결·일반·보기·다운로드·캐시 칸. 연결 외의 칸은 읽지 못한 파일을 덮어쓰지 않음
       relays.rs          Mullvad 서버 목록 디스크 캐시(앱 캐시 디렉터리의 `relays.json`, ETag), 위치 목록, 서버 고르기
-      download.rs        원본 다운로드(`.part`로 받아 이름 바꾸기, 진행률 이벤트), 파일명 `{id}_{artist}.{ext}`, 기본 폴더 `~/Downloads/Tailgate`(설정은 10번)
+      download.rs        원본 다운로드(`.part`로 받아 이름 바꾸기, 진행률 이벤트), 설정의 폴더(기본 `~/Downloads/Tailgate`)
+      download/name.rs   파일 이름 규칙(`{id}_{artist}` 같은 템플릿) 해석·검사·이름 만들기
     examples/
       tunnel_probe.rs    실제 Mullvad 서버로 터널을 검증하는 수동 점검 도구
       api_probe.rs       앱과 같은 경로로 실제 e621 API를 불러 응답 구조를 확인하는 수동 점검 도구
@@ -115,13 +117,18 @@ tailgate/
       layout.ts          격자 계산(열 수·칸 크기·보이는 범위), 썸네일 크기 범위 (순수 함수, vitest)
       zoom.ts            뷰어 줌·패닝 계산(맞춤 배율, 커서 기준 확대, 이동 제한) (순수 함수, vitest)
       viewer.svelte.ts   뷰어 상태(열린 게시물, 이전·다음, 정보 패널, 음소거)
-      search.svelte.ts   화면별 게시물 목록(PostList: 시작·다음 페이지·다시 시도·블랙리스트 보이기), 알게 된 태그 카테고리
+      search.svelte.ts   화면별 게시물 목록(PostList: 시작·다음 페이지·다시 시도·블랙리스트 보이기), 알게 된 태그 카테고리, 블랙리스트 변경 이벤트
+      blacklistMarks.ts  검색 하나의 숨김 표시. 페이지 응답과 블랙리스트 변경 이벤트를 세대 번호로 순서 맞춤 (순수, vitest)
+      settings.svelte.ts 일반·보기 설정(언어, 18세 확인, 칸 폭, 최근 검색어). 화면을 그리기 전에 읽음
+      downloadSettings.ts  다운로드 폴더·파일 이름 규칙 명령
+      storage.ts         이미지 캐시 사용량·한도·비우기 명령, 크기 표시 (vitest)
       actions.svelte.ts  즐겨찾기·투표(먼저 반영 후 응답으로 맞춤)·다운로드와 진행률
       toast.svelte.ts    화면 아래 알림
       errors.ts          API 오류 코드 → 문구
       posts.ts           Rust 모델의 TS 타입, API 오류 코드
       tags.ts            태그 토큰 해석(제외·메타태그), 카테고리 색
-    components/          Sidebar, ConnectionStatus, TagInput, SortMenu, Grid, Thumb, Viewer, MediaStage, InfoPanel, SignInSheet, Settings, MullvadSignInSheet, Toasts …
+    components/          Sidebar, ConnectionStatus, TagInput, SortMenu, Grid, Thumb, Viewer, MediaStage, InfoPanel, SignInSheet, Settings, MullvadSignInSheet, AgeCheck, Toasts …
+    Root.svelte          18세 확인 전에는 AgeCheck, 뒤에는 App (App은 만들어지자마자 게시물을 받으므로)
     styles/app.css       Tailwind 진입점, 디자인 토큰(CSS 변수 + @theme), 기본 스타일
 ```
 
@@ -266,11 +273,11 @@ WKWebView는 커스텀 프로토콜의 MP4를 8~24바이트짜리 Range로 수�
 
 | 대상 | 방식 |
 |---|---|
-| 이미지·동영상 | `media.rs`가 관리한다. 커스텀 프로토콜 응답에는 웹뷰 HTTP 캐시가 적용되지 않으므로 직접 캐시한다. 먼저 7.2의 메모리 블록 캐시, 이후 디스크 캐시로 넓히고 설정에 용량 한도·비우기를 둔다. |
+| 이미지·동영상 | `media/`가 관리한다. 동영상은 7.2의 메모리 블록 캐시. 이미지(jpg·png·gif·webp, Range 없는 요청)는 앱 캐시 폴더의 `media/`에 static1 경로 그대로 디스크에 둔다(`media/disk.rs`). WKWebView가 한 실행 안에서는 받은 이미지를 다시 요청하지 않으므로(research.md 7절) 디스크 캐시는 다시 실행한 뒤를 위한 것이다. 파일은 `.part`로 쓴 뒤 이름을 바꾸고, 수정 시각을 마지막 사용으로 삼아 꺼낼 때마다 갱신한다. 최대 크기(기본 1GB, 설정에서 256MB~5GB)를 넘으면 오래 쓰지 않은 것부터 지워 90%까지 줄인다. 사용량은 시작할 때 백그라운드에서 한 번 세고, 그때 남은 `.part`도 지운다. 설정의 [비우기]는 `media/`를 통째로 지운다. 쓰기 실패는 다음 실행이 다시 받으면 되므로 로그만 남긴다. |
 | API 응답 | 캐시하지 않는다. 즐겨찾기·점수는 항상 최신이어야 한다. |
 | 블랙리스트 | 자격 증명마다 받고, 창이 다시 활성화될 때(최소 5분 간격) 다시 받는다. 바뀌었으면 열린 검색이 이미 받은 게시물도 다시 판정해 화면에 알린다(`blacklist-changed`). 페이지 응답과 이 이벤트는 도착 순서가 보장되지 않으므로 블랙리스트 세대 번호로 어느 판정이 새 것인지 가린다. 설정 파일에는 저장하지 않는다. 저장해 두어도 시작할 때 아끼는 것은 `/users/me` 한 번(약 0.4초)이고, 게시물은 어차피 연결된 뒤에 온다(2026-10-21 결정). |
 | 자격 증명 | OS 키체인(macOS Keychain, Windows 자격 증명 관리자). 설정 파일·로그·URL에 키를 남기지 않는다. |
-| 설정·최근 검색어 | 앱 설정 디렉터리의 JSON 파일 하나(`settings.json`). 칸은 연결·일반(언어, 18세 확인)·보기(칸 폭, 최근 검색어)·다운로드(폴더, 파일 이름 규칙. 값이 없으면 앱의 기본값을 따름)이고 10-4에서 캐시를 더한다. 연결 외의 칸을 저장할 때는 읽지 못한 파일을 덮어쓰지 않는다. 덮어쓰면 안의 연결 설정이 사라져 다음 시도부터 첫 실행 규칙이 적용되고, 막혀 있던 연결이 열릴 수 있다(6.3절 1). 화면은 일반 칸을 먼저 읽고 나서 그린다. |
+| 설정·최근 검색어 | 앱 설정 디렉터리의 JSON 파일 하나(`settings.json`). 칸은 연결·일반(언어, 18세 확인)·보기(칸 폭, 최근 검색어)·다운로드(폴더, 파일 이름 규칙. 값이 없으면 앱의 기본값을 따름)·캐시(최대 크기)다. 연결 외의 칸을 저장할 때는 읽지 못한 파일을 덮어쓰지 않는다. 덮어쓰면 안의 연결 설정이 사라져 다음 시도부터 첫 실행 규칙이 적용되고, 막혀 있던 연결이 열릴 수 있다(6.3절 1). 화면은 일반 칸을 먼저 읽고 나서 그린다. |
 
 처음 계획은 웹뷰 HTTP 캐시에 맡기는 것이었지만, 핫링크 차단 때문에 미디어가 `media://`로 옮겨 오면서 캐시도 앱이 갖게 됐다. 용량 한도를 앱이 정할 수 있게 된 것은 덤이다.
 
