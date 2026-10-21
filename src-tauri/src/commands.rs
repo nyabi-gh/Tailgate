@@ -12,13 +12,94 @@ use crate::{
         models::{Favorited, TagSuggestion, Voted},
     },
     download::{DownloadError, DownloadRequest, Downloads, Saved},
-    network::{Connection, Network},
+    network::{Connection, ConnectionDetails, Network, SettingsChangeError},
+    relays::LocationChoice,
     search::{SearchError, SearchPage, Searches},
+    settings::ConnectionMode,
 };
 
 #[tauri::command]
 pub fn connection_status(network: State<'_, Arc<Network>>) -> Connection {
     network.connection()
+}
+
+#[tauri::command]
+pub fn connection_details(network: State<'_, Arc<Network>>) -> ConnectionDetails {
+    network.details()
+}
+
+#[tauri::command]
+pub fn reconnect(network: State<'_, Arc<Network>>) {
+    network.reconnect();
+}
+
+#[tauri::command]
+pub fn set_connection_mode(
+    network: State<'_, Arc<Network>>,
+    mode: ConnectionMode,
+) -> Result<(), SettingsChangeError> {
+    network.set_mode(mode)
+}
+
+/// Resolves to `false` when the user cancels the file dialog.
+#[tauri::command]
+pub async fn import_wireguard_config(
+    app: AppHandle,
+    network: State<'_, Arc<Network>>,
+) -> Result<bool, SettingsChangeError> {
+    use tauri_plugin_dialog::DialogExt;
+    let (picked, chosen) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("WireGuard", &["conf"])
+        .pick_file(move |path| {
+            // The receiver only goes away if the command was dropped; nobody waits then.
+            let _ = picked.send(path);
+        });
+    let Some(path) = chosen.await.ok().flatten() else {
+        return Ok(false);
+    };
+    let path = path.into_path().map_err(|error| {
+        tracing::warn!("the picked file has no path: {error}");
+        SettingsChangeError::UnreadableFile
+    })?;
+    network.import_wireguard(path).await?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub async fn mullvad_sign_in(
+    network: State<'_, Arc<Network>>,
+    account_number: String,
+) -> Result<(), SettingsChangeError> {
+    network.mullvad_sign_in(&account_number).await
+}
+
+#[tauri::command]
+pub async fn mullvad_sign_out(network: State<'_, Arc<Network>>) -> Result<(), SettingsChangeError> {
+    network.mullvad_sign_out().await
+}
+
+#[tauri::command]
+pub async fn mullvad_expiry(
+    network: State<'_, Arc<Network>>,
+) -> Result<Option<String>, SettingsChangeError> {
+    network.mullvad_expiry().await
+}
+
+#[tauri::command]
+pub async fn mullvad_locations(
+    network: State<'_, Arc<Network>>,
+) -> Result<Vec<LocationChoice>, SettingsChangeError> {
+    network.locations().await
+}
+
+#[tauri::command]
+pub async fn set_mullvad_location(
+    network: State<'_, Arc<Network>>,
+    code: String,
+) -> Result<(), SettingsChangeError> {
+    network.set_location(&code).await
 }
 
 #[tauri::command]

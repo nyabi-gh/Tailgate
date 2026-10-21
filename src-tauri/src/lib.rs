@@ -28,8 +28,18 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::connection_status,
+            commands::connection_details,
+            commands::reconnect,
+            commands::set_connection_mode,
+            commands::import_wireguard_config,
+            commands::mullvad_sign_in,
+            commands::mullvad_sign_out,
+            commands::mullvad_expiry,
+            commands::mullvad_locations,
+            commands::set_mullvad_location,
             commands::account_status,
             commands::sign_in,
             commands::sign_out,
