@@ -15,7 +15,9 @@ use tokio::sync::watch;
 use crate::network::UserAgent;
 use client::Client;
 pub use client::Credentials;
-pub use endpoints::{PAGE_SIZE, POOL_PAGE_SIZE, PoolOrder, PoolQuery, Popular, PostSearch, Scale};
+pub use endpoints::{
+    LIST_PAGE_SIZE, PAGE_SIZE, PoolOrder, PoolQuery, Popular, PostSearch, Scale, SetOrder, SetQuery,
+};
 
 const BASE: &str = "https://e621.net/";
 
@@ -363,6 +365,56 @@ mod tests {
             requests[1].target,
             "/pools.json?search%5Border%5D=updated_at&limit=75&page=1"
         );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn asks_for_sets_by_name_and_order() {
+        let (api, mut received) = fake_api(vec![ok(&json!([])), ok(&json!([]))]).await;
+        let query = SetQuery {
+            name: "wolf".into(),
+            order: SetOrder::PostCount,
+        };
+        api.sets(&query, 3).await.unwrap();
+        let newest = SetQuery {
+            name: String::new(),
+            order: SetOrder::Created,
+        };
+        api.sets(&newest, 1).await.unwrap();
+        let requests = drain(&mut received);
+        assert_eq!(
+            requests[0].target,
+            "/post_sets.json?limit=75&page=3&search%5Border%5D=post_count&search%5Bname%5D=wolf"
+        );
+        // e621's own default is newest first; its `created_at` order is the opposite.
+        assert_eq!(requests[1].target, "/post_sets.json?limit=75&page=1");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn adds_to_and_removes_from_sets() {
+        let set = json!({"id": 5, "name": "n", "shortname": "s", "is_public": true,
+            "updated_at": "2026-10-22T00:00:00.000-04:00", "post_ids": [7]});
+        let (api, mut received) = fake_api(vec![
+            json_response("201 Created", &set.to_string()),
+            ok(&set),
+        ])
+        .await;
+        api.change_set(5, 7, true).await.unwrap();
+        api.change_set(5, 7, false).await.unwrap();
+        let requests = drain(&mut received);
+        assert_eq!(requests[0].method, "POST");
+        assert_eq!(requests[0].target, "/post_sets/5/add_posts.json");
+        assert_eq!(requests[0].body, "post_ids%5B%5D=7");
+        assert_eq!(requests[1].target, "/post_sets/5/remove_posts.json");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reads_the_ids_of_my_sets() {
+        let (api, _received) = fake_api(vec![ok(&json!({
+            "Owned": [["mine one", 1], ["mine two", 2]],
+            "Maintained": [["theirs", 9]],
+        }))])
+        .await;
+        assert_eq!(api.my_set_ids().await.unwrap(), (vec![1, 2], vec![9]));
     }
 
     #[tokio::test(start_paused = true)]

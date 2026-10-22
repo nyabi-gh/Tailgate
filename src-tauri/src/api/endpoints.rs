@@ -5,14 +5,14 @@ use serde::Deserialize;
 use super::{
     Api, ApiError, Credentials,
     models::{
-        Favorited, Pool, PoolCategory, Post, RawPool, RawPostEnvelope, RawPosts, RawUser,
-        TagSuggestion, User, Voted,
+        Favorited, Pool, PoolCategory, Post, PostSet, RawPool, RawPostEnvelope, RawPostSet,
+        RawPosts, RawSetsForSelect, RawUser, TagSuggestion, User, Voted,
     },
 };
 
 pub const PAGE_SIZE: usize = 100;
-/// e621's own page size for pool lists.
-pub const POOL_PAGE_SIZE: usize = 75;
+/// e621's own page size for pool and set lists.
+pub const LIST_PAGE_SIZE: usize = 75;
 /// `page=<number>` answers 410 past this page; only `page=b<id>` goes deeper.
 const MAX_PAGE_NUMBER: u32 = 750;
 
@@ -81,7 +81,7 @@ impl Api {
     }
 
     pub async fn pools(&self, query: &PoolQuery, page: u32) -> Result<Vec<Pool>, ApiError> {
-        let (limit, page) = (POOL_PAGE_SIZE.to_string(), page.to_string());
+        let (limit, page) = (LIST_PAGE_SIZE.to_string(), page.to_string());
         let mut params = vec![
             ("search[order]", query.order.as_param()),
             ("limit", limit.as_str()),
@@ -120,6 +120,61 @@ impl Api {
             .get("pools.json", &[("search[id]", &ids)])
             .await?;
         Ok(raw.into_iter().map(Pool::from).collect())
+    }
+
+    pub async fn sets(&self, query: &SetQuery, page: u32) -> Result<Vec<PostSet>, ApiError> {
+        let (limit, page) = (LIST_PAGE_SIZE.to_string(), page.to_string());
+        let mut params = vec![("limit", limit.as_str()), ("page", page.as_str())];
+        if let Some(order) = query.order.as_param() {
+            params.push(("search[order]", order));
+        }
+        let name = query.name.trim();
+        if !name.is_empty() {
+            params.push(("search[name]", name));
+        }
+        let raw: Vec<RawPostSet> = self.client.get("post_sets.json", &params).await?;
+        Ok(raw.into_iter().map(PostSet::from).collect())
+    }
+
+    pub async fn set(&self, id: u64) -> Result<PostSet, ApiError> {
+        let raw: RawPostSet = self
+            .client
+            .get(&format!("post_sets/{id}.json"), &[])
+            .await?;
+        Ok(raw.into())
+    }
+
+    /// In no particular order. Private sets come only to their owner.
+    pub async fn sets_by_id(&self, ids: &[u64]) -> Result<Vec<PostSet>, ApiError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let (ids, limit) = (join_ids(ids), ids.len().to_string());
+        let raw: Vec<RawPostSet> = self
+            .client
+            .get("post_sets.json", &[("search[id]", &ids), ("limit", &limit)])
+            .await?;
+        Ok(raw.into_iter().map(PostSet::from).collect())
+    }
+
+    /// The ids of the signed-in user's own sets, and of those they maintain for others.
+    pub async fn my_set_ids(&self) -> Result<(Vec<u64>, Vec<u64>), ApiError> {
+        let raw: RawSetsForSelect = self.client.get("post_sets/for_select.json", &[]).await?;
+        let ids = |pairs: Vec<(String, u64)>| pairs.into_iter().map(|(_, id)| id).collect();
+        Ok((ids(raw.owned), ids(raw.maintained)))
+    }
+
+    /// Adds the post to the set or takes it out.
+    pub async fn change_set(&self, set: u64, post: u64, add: bool) -> Result<(), ApiError> {
+        let action = if add { "add_posts" } else { "remove_posts" };
+        let _: serde::de::IgnoredAny = self
+            .client
+            .post(
+                &format!("post_sets/{set}/{action}.json"),
+                &[("post_ids[]", &post.to_string())],
+            )
+            .await?;
+        Ok(())
     }
 
     /// In the order of `ids`. Posts e621 leaves out, such as deleted ones, are missing.
@@ -204,6 +259,39 @@ impl PoolOrder {
             Self::Name => "name",
             Self::Created => "created_at",
             Self::PostCount => "post_count",
+        }
+    }
+}
+
+/// What the set list shows when searching.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetQuery {
+    /// Part of the name; empty for all public sets.
+    pub name: String,
+    pub order: SetOrder,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SetOrder {
+    /// Recently changed first.
+    Updated,
+    Name,
+    /// Largest first.
+    PostCount,
+    /// Newest first.
+    Created,
+}
+
+impl SetOrder {
+    /// `None` for e621's default, newest first; its `created_at` order is oldest first.
+    fn as_param(self) -> Option<&'static str> {
+        match self {
+            Self::Updated => Some("update"),
+            Self::Name => Some("name"),
+            Self::PostCount => Some("post_count"),
+            Self::Created => None,
         }
     }
 }

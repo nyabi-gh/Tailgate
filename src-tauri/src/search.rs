@@ -14,8 +14,8 @@ use tokio::{sync::Mutex, time::Instant};
 
 use crate::{
     api::{
-        Api, ApiError, Credentials, POOL_PAGE_SIZE, PoolQuery, Popular, PostSearch,
-        models::{Pool, Post, TagCategory, Tags},
+        Api, ApiError, Credentials, LIST_PAGE_SIZE, PoolQuery, Popular, PostSearch, SetQuery,
+        models::{Pool, Post, PostSet, TagCategory, Tags},
     },
     blacklist::Blacklist,
 };
@@ -66,6 +66,7 @@ enum Screen {
     Favorites,
     Popular,
     Pool,
+    Set,
 }
 
 struct OpenSearch {
@@ -100,6 +101,42 @@ pub struct OpenedPool {
     pub search: u64,
     pub pool: Pool,
     pub post_count: usize,
+}
+
+/// One set in the set list.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetSummary {
+    #[serde(flatten)]
+    pub set: PostSet,
+    pub post_count: usize,
+    /// The first post's preview; `None` when it is gone or blacklisted.
+    pub cover: Option<String>,
+    /// The user's own, as opposed to one they maintain or found by searching.
+    pub owned: bool,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+pub struct SetPage {
+    pub sets: Vec<SetSummary>,
+    pub done: bool,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenedSet {
+    pub search: u64,
+    pub set: PostSet,
+    pub post_count: usize,
+}
+
+/// A set the user can add the post to or take it out of.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetChoice {
+    pub id: u64,
+    pub name: String,
+    pub contains: bool,
 }
 
 /// The blacklist of the credentials it was fetched with, so signing in or out fetches anew.
@@ -190,35 +227,130 @@ impl Searches {
         page: u32,
     ) -> Result<PoolPage, ApiError> {
         let pools = api.pools(query, page).await?;
-        let covers: Vec<u64> = pools
-            .iter()
-            .filter_map(|pool| pool.post_ids.first().copied())
-            .collect();
-        let blacklist = {
-            let mut cached = self.blacklist.lock().await;
-            self.current_blacklist(&mut cached, api).await?.0
-        };
-        let covers: HashMap<u64, Post> = api
-            .posts_by_id(&covers)
+        let mut covers = self
+            .covers(api, pools.iter().map(|pool| pool.post_ids.first().copied()))
             .await?
-            .into_iter()
-            .map(|post| (post.id, post))
-            .collect();
-        let done = pools.len() < POOL_PAGE_SIZE;
+            .into_iter();
+        let done = pools.len() < LIST_PAGE_SIZE;
         let pools = pools
             .into_iter()
             .map(|pool| PoolSummary {
-                cover: pool
-                    .post_ids
-                    .first()
-                    .and_then(|id| covers.get(id))
-                    .filter(|post| !blacklist.matches(post))
-                    .and_then(|post| post.preview.url.clone()),
+                cover: covers.next().flatten(),
                 post_count: pool.post_ids.len(),
                 pool,
             })
             .collect();
         Ok(PoolPage { pools, done })
+    }
+
+    pub async fn set_page(
+        &self,
+        api: &Api,
+        query: &SetQuery,
+        page: u32,
+    ) -> Result<SetPage, ApiError> {
+        let sets = api.sets(query, page).await?;
+        let done = sets.len() < LIST_PAGE_SIZE;
+        let sets = self.summarize_sets(api, sets, &[]).await?;
+        Ok(SetPage { sets, done })
+    }
+
+    /// The signed-in user's own sets, then those they maintain, each by name.
+    pub async fn my_sets(&self, api: &Api) -> Result<Vec<SetSummary>, ApiError> {
+        let (owned, maintained) = api.my_set_ids().await?;
+        let mut sets = api
+            .sets_by_id(&[owned.as_slice(), maintained.as_slice()].concat())
+            .await?;
+        sets.sort_by(|a, b| {
+            (!owned.contains(&a.id), a.name.to_lowercase())
+                .cmp(&(!owned.contains(&b.id), b.name.to_lowercase()))
+        });
+        self.summarize_sets(api, sets, &owned).await
+    }
+
+    /// The sets the user may change, and whether the post is in each: their own, and the public
+    /// ones they maintain (e621 lets maintainers change only public sets).
+    pub async fn set_choices(&self, api: &Api, post: u64) -> Result<Vec<SetChoice>, ApiError> {
+        let (owned, maintained) = api.my_set_ids().await?;
+        let mut sets = api
+            .sets_by_id(&[owned.as_slice(), maintained.as_slice()].concat())
+            .await?;
+        sets.retain(|set| owned.contains(&set.id) || set.is_public);
+        sets.sort_by_key(|set| set.name.to_lowercase());
+        Ok(sets
+            .into_iter()
+            .map(|set| SetChoice {
+                contains: set.post_ids.contains(&post),
+                id: set.id,
+                name: set.name,
+            })
+            .collect())
+    }
+
+    pub async fn start_set(&self, api: &Api, id: u64) -> Result<OpenedSet, ApiError> {
+        let set = api.set(id).await?;
+        let post_count = set.post_ids.len();
+        let search = self.open(OpenSearch {
+            screen: Screen::Set,
+            tags: Vec::new(),
+            pages: Mutex::new(PostSearch::ids(set.post_ids.clone())),
+            loaded: std::sync::Mutex::default(),
+        });
+        Ok(OpenedSet {
+            search,
+            set,
+            post_count,
+        })
+    }
+
+    async fn summarize_sets(
+        &self,
+        api: &Api,
+        sets: Vec<PostSet>,
+        owned: &[u64],
+    ) -> Result<Vec<SetSummary>, ApiError> {
+        let mut covers = self
+            .covers(api, sets.iter().map(|set| set.post_ids.first().copied()))
+            .await?
+            .into_iter();
+        Ok(sets
+            .into_iter()
+            .map(|set| SetSummary {
+                cover: covers.next().flatten(),
+                post_count: set.post_ids.len(),
+                owned: owned.contains(&set.id),
+                set,
+            })
+            .collect())
+    }
+
+    /// The previews of the given first posts, in one request; `None` for a list with no posts,
+    /// a post e621 leaves out, or one the blacklist hides.
+    async fn covers(
+        &self,
+        api: &Api,
+        firsts: impl Iterator<Item = Option<u64>>,
+    ) -> Result<Vec<Option<String>>, ApiError> {
+        let firsts: Vec<Option<u64>> = firsts.collect();
+        let blacklist = {
+            let mut cached = self.blacklist.lock().await;
+            self.current_blacklist(&mut cached, api).await?.0
+        };
+        let ids: Vec<u64> = firsts.iter().flatten().copied().collect();
+        let posts: HashMap<u64, Post> = api
+            .posts_by_id(&ids)
+            .await?
+            .into_iter()
+            .map(|post| (post.id, post))
+            .collect();
+        Ok(firsts
+            .into_iter()
+            .map(|id| {
+                id.and_then(|id| posts.get(&id))
+                    .filter(|post| !blacklist.matches(post))
+                    .and_then(|post| post.preview.url.clone())
+            })
+            .collect())
     }
 
     /// Closes the search the same screen had open before.
@@ -486,6 +618,62 @@ mod tests {
             .map(|request| request.target)
             .collect();
         assert_eq!(requests[2], "/posts.json?tags=id%3A10%2C20&limit=2");
+    }
+
+    fn set(id: u64, name: &str, public: bool, post_ids: &[u64]) -> Value {
+        json!({
+            "id": id,
+            "name": name,
+            "shortname": format!("set_{id}"),
+            "is_public": public,
+            "updated_at": "2026-10-22T00:00:00.000-04:00",
+            "post_ids": post_ids,
+        })
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn my_sets_list_my_own_first() {
+        let for_select = json!({"Owned": [["b", 2], ["a", 1]], "Maintained": [["c", 3]]});
+        let sets = json!([
+            set(3, "Another's", true, &[]),
+            set(2, "beta", false, &[20]),
+            set(1, "Alpha", true, &[10]),
+        ]);
+        let (api, _received) = api(vec![
+            ok(&for_select),
+            ok(&sets),
+            me(""),
+            ok(&page([10, 20])),
+        ])
+        .await;
+        let mine = Searches::default().my_sets(&api).await.unwrap();
+        let listed: Vec<_> = mine
+            .iter()
+            .map(|set| (set.set.id, set.owned, set.cover.is_some()))
+            .collect();
+        assert_eq!(
+            listed,
+            [(1, true, true), (2, true, true), (3, false, false)]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn offers_the_sets_the_user_may_change() {
+        let for_select =
+            json!({"Owned": [["mine", 1]], "Maintained": [["open", 2], ["closed", 3]]});
+        let sets = json!([
+            set(1, "mine", false, &[7, 8]),
+            set(2, "open", true, &[9]),
+            set(3, "closed", false, &[7]),
+        ]);
+        let (api, _received) = api(vec![ok(&for_select), ok(&sets)]).await;
+        let choices = Searches::default().set_choices(&api, 7).await.unwrap();
+        let listed: Vec<_> = choices
+            .iter()
+            .map(|choice| (choice.id, choice.contains))
+            .collect();
+        // A private set someone else owns cannot be changed by its maintainers.
+        assert_eq!(listed, [(1, true), (2, false)]);
     }
 
     #[tokio::test(start_paused = true)]

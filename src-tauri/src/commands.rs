@@ -8,7 +8,7 @@ use tauri::{AppHandle, Emitter, Manager, State, ipc::Channel, path::BaseDirector
 use crate::{
     account::{Account, AccountError, AccountState},
     api::{
-        Api, ApiError, PoolQuery, Popular,
+        Api, ApiError, PoolQuery, Popular, SetQuery,
         models::{Favorited, Pool, TagSuggestion, Voted},
     },
     download::{
@@ -18,7 +18,10 @@ use crate::{
     media::{self, CacheUsage, ClearError, Media},
     network::{Connection, ConnectionDetails, Network, SettingsChangeError},
     relays::LocationChoice,
-    search::{OpenedPool, PoolPage, SearchError, SearchPage, Searches},
+    search::{
+        OpenedPool, OpenedSet, PoolPage, SearchError, SearchPage, Searches, SetChoice, SetPage,
+        SetSummary,
+    },
     settings::{Browse, CacheSettings, ConnectionMode, General, Settings, UpdateSettings},
     update::{Available, Progress, UpdateError, Updates},
 };
@@ -180,6 +183,52 @@ pub async fn pools_page(
     page: u32,
 ) -> Result<PoolPage, ApiError> {
     searches.pool_page(&api, &query, page).await
+}
+
+#[tauri::command]
+pub async fn search_start_set(
+    searches: State<'_, Arc<Searches>>,
+    api: State<'_, Arc<Api>>,
+    id: u64,
+) -> Result<OpenedSet, ApiError> {
+    searches.start_set(&api, id).await
+}
+
+#[tauri::command]
+pub async fn sets_page(
+    searches: State<'_, Arc<Searches>>,
+    api: State<'_, Arc<Api>>,
+    query: SetQuery,
+    page: u32,
+) -> Result<SetPage, ApiError> {
+    searches.set_page(&api, &query, page).await
+}
+
+#[tauri::command]
+pub async fn my_sets(
+    searches: State<'_, Arc<Searches>>,
+    api: State<'_, Arc<Api>>,
+) -> Result<Vec<SetSummary>, ApiError> {
+    searches.my_sets(&api).await
+}
+
+#[tauri::command]
+pub async fn set_choices(
+    searches: State<'_, Arc<Searches>>,
+    api: State<'_, Arc<Api>>,
+    post: u64,
+) -> Result<Vec<SetChoice>, ApiError> {
+    searches.set_choices(&api, post).await
+}
+
+#[tauri::command]
+pub async fn change_set(
+    api: State<'_, Arc<Api>>,
+    set: u64,
+    post: u64,
+    add: bool,
+) -> Result<(), ApiError> {
+    api.change_set(set, post, add).await
 }
 
 /// For naming the pools a post is in.

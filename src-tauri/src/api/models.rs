@@ -432,6 +432,53 @@ impl From<RawPool> for Pool {
     }
 }
 
+/// A post set. Its posts are listed by id, in the set's order.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostSet {
+    pub id: u64,
+    pub name: String,
+    /// What `set:` searches use.
+    pub shortname: String,
+    pub is_public: bool,
+    pub updated_at: String,
+    #[serde(skip)]
+    pub post_ids: Vec<u64>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct RawPostSet {
+    id: u64,
+    name: String,
+    shortname: String,
+    is_public: bool,
+    updated_at: String,
+    post_ids: Vec<u64>,
+}
+
+impl From<RawPostSet> for PostSet {
+    fn from(raw: RawPostSet) -> Self {
+        Self {
+            id: raw.id,
+            name: raw.name,
+            shortname: raw.shortname,
+            is_public: raw.is_public,
+            updated_at: raw.updated_at,
+            post_ids: raw.post_ids,
+        }
+    }
+}
+
+/// `/post_sets/for_select.json`: the user's sets as `[display name, id]` pairs. The names are
+/// cut short for menus, so only the ids are used.
+#[derive(Deserialize)]
+pub(super) struct RawSetsForSelect {
+    #[serde(rename = "Owned")]
+    pub owned: Vec<(String, u64)>,
+    #[serde(rename = "Maintained")]
+    pub maintained: Vec<(String, u64)>,
+}
+
 /// Posts from a `/posts.json` response, for tests elsewhere that start from real responses.
 #[cfg(test)]
 pub(crate) fn decode_posts(json: &str) -> Vec<Post> {
@@ -461,6 +508,18 @@ mod tests {
         assert_eq!(pool.creator.as_deref(), Some("VaurukBoy"));
         assert_eq!(pool.post_ids.len(), 51);
         assert_eq!(pool.post_ids[..2], [6062592, 6062593]);
+    }
+
+    #[test]
+    fn decodes_post_sets() {
+        let raw: Vec<RawPostSet> =
+            serde_json::from_str(include_str!("../../tests/fixtures/post_sets.json")).unwrap();
+        let sets: Vec<PostSet> = raw.into_iter().map(PostSet::from).collect();
+        assert_eq!(sets.len(), 3);
+        assert_eq!(sets[0].id, 57913);
+        assert_eq!(sets[0].shortname, "gooberito");
+        assert!(sets[0].is_public);
+        assert_eq!(sets[0].post_ids.len(), 2123);
     }
 
     #[test]
