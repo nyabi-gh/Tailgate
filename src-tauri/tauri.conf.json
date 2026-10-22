@@ -1,7 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Tailgate",
-  "version": "0.1.0",
   "identifier": "pro.tb.nyabi.Tailgate",
   "build": {
     "beforeDevCommand": "npm run dev",
