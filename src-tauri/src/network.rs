@@ -67,9 +67,9 @@ impl Default for UserAgent {
 }
 
 /// Longer than the tunnel's own DNS and connect limits together (25 s), so those report first.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Between two reads, not for the whole response: a large original may take minutes.
-const READ_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const READ_TIMEOUT: Duration = Duration::from_secs(30);
 /// Whole requests, the relay list (about 600 KB) included.
 const MULLVAD_TIMEOUT: Duration = Duration::from_secs(30);
 const RETRY_FIRST: Duration = Duration::from_secs(1);
@@ -234,6 +234,11 @@ enum Opened {
     Tunnel { tunnel: Tunnel, relay: String },
 }
 
+/// `socks5h` so names are resolved on the far side, never by the system resolver.
+fn proxy_url(socks: &SocksServer) -> String {
+    format!("socks5h://{}", socks.address())
+}
+
 pub struct Network {
     socks: SocksServer,
     /// Every request to e621 goes through this client, and so through the proxy and its route.
@@ -278,10 +283,7 @@ impl Network {
         let socks = SocksServer::bind(Route::Blocked).await?;
         let http = reqwest::Client::builder()
             .user_agent(USER_AGENT)
-            .proxy(
-                reqwest::Proxy::all(format!("socks5h://{}", socks.address()))
-                    .map_err(io::Error::other)?,
-            )
+            .proxy(reqwest::Proxy::all(proxy_url(&socks)).map_err(io::Error::other)?)
             .connect_timeout(CONNECT_TIMEOUT)
             .read_timeout(READ_TIMEOUT)
             .build()
@@ -304,6 +306,11 @@ impl Network {
 
     pub fn http(&self) -> &reqwest::Client {
         &self.http
+    }
+
+    /// For clients the app does not build itself, so their traffic takes the same route.
+    pub fn proxy_url(&self) -> String {
+        proxy_url(&self.socks)
     }
 
     pub fn connection(&self) -> Connection {
