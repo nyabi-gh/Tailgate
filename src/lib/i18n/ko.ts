@@ -183,6 +183,7 @@ const ko: Messages = {
     },
   },
   actions: {
+    sets: "세트에 넣기",
     favorite: "즐겨찾기",
     unfavorite: "즐겨찾기 해제",
     voteUp: "추천",
@@ -237,6 +238,12 @@ const ko: Messages = {
     emptySet: "이 세트에는 보여 줄 게시물이 없습니다.",
     back: "세트",
     onE621: "e621에서 보기",
+    menu: {
+      title: "세트",
+      loading: "내 세트를 불러오는 중…",
+      none: "고칠 수 있는 세트가 없습니다. 세트는 e621에서 만듭니다.",
+      failed: "세트를 바꾸지 못했습니다.",
+    },
   },
   favorites: {
     signedOut: "로그인하면 내 즐겨찾기를 볼 수 있습니다.",

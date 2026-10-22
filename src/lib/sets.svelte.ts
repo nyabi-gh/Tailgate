@@ -13,6 +13,8 @@ export type SetSummary = PostSet & { postCount: number; cover: string | null; ow
 type SetPage = { sets: SetSummary[]; done: boolean };
 /** Mirrors `OpenedSet` in src-tauri/src/search.rs. */
 type OpenedSet = { search: number; set: PostSet; postCount: number };
+/** Mirrors `SetChoice` in src-tauri/src/search.rs. */
+export type SetChoice = { id: number; name: string; contains: boolean };
 
 /** Which list the set screen shows. */
 export const setMode = $state<{ mode: "mine" | "search" }>({ mode: "mine" });
@@ -67,3 +69,15 @@ export function openSet(id: number) {
 export function closeSet() {
   opened = null;
 }
+
+export function setChoices(post: number): Promise<SetChoice[]> {
+  return invoke<SetChoice[]>("set_choices", { post });
+}
+
+export async function changeSet(set: number, post: number, add: boolean) {
+  await invoke("change_set", { set, post, add });
+  markMySetsStale();
+}
+
+/** Whether the viewer's set menu is open; the S key and the panel's button toggle it. */
+export const setMenu = $state({ open: false });

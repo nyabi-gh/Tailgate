@@ -20,7 +20,8 @@ export function onSignInNeeded(handler: () => void) {
   askToSignIn = handler;
 }
 
-function signedIn(): boolean {
+/** Whether an account is signed in; if not, the sign-in sheet opens. */
+export function signedIn(): boolean {
   if (account().state === "signedIn") return true;
   askToSignIn();
   return false;

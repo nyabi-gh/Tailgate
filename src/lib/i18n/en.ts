@@ -182,6 +182,7 @@ const en = {
     },
   },
   actions: {
+    sets: "Add to set",
     favorite: "Favorite",
     unfavorite: "Remove from favorites",
     voteUp: "Vote up",
@@ -236,6 +237,12 @@ const en = {
     emptySet: "This set has no posts to show.",
     back: "Sets",
     onE621: "Open on e621",
+    menu: {
+      title: "Sets",
+      loading: "Loading your sets…",
+      none: "You have no sets you can change. Sets are made on e621.",
+      failed: "Could not change the set.",
+    },
   },
   favorites: {
     signedOut: "Sign in to see your favorites.",

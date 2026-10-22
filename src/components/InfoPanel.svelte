@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { ArrowDown, ArrowUp, CircleAlert, Download, ExternalLink, Heart, LoaderCircle } from "@lucide/svelte";
-  import { download, downloadProgress, toggleFavorite, vote } from "../lib/actions.svelte";
+  import { ArrowDown, ArrowUp, CircleAlert, Download, ExternalLink, Heart, Layers, LoaderCircle } from "@lucide/svelte";
+  import { download, downloadProgress, signedIn, toggleFavorite, vote } from "../lib/actions.svelte";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { currentLocale, m } from "../lib/i18n/index.svelte";
   import type { Post, TagCategory } from "../lib/posts";
   import { learnPoolNames, poolName } from "../lib/pools.svelte";
+  import { setMenu } from "../lib/sets.svelte";
+  import SetMenu from "./SetMenu.svelte";
   import { categoryTone } from "../lib/tags";
 
   let {
@@ -103,6 +105,14 @@
       >
         <ArrowDown size={16} strokeWidth={2} />
       </button>
+      <button
+        class={[action, setMenu.open ? "text-focus" : "text-ink/80"]}
+        aria-expanded={setMenu.open}
+        title="{m().actions.sets} (S)"
+        onclick={() => signedIn() && (setMenu.open = !setMenu.open)}
+      >
+        <Layers size={16} strokeWidth={2} />
+      </button>
       {#if post.file.url}
         <button
           class={[action, "text-ink/80"]}
@@ -119,6 +129,10 @@
       {/if}
     </div>
   </section>
+
+  {#if setMenu.open}
+    <SetMenu post={post.id} />
+  {/if}
 
   <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
     <dt class="text-dim">{m().viewer.posted}</dt>

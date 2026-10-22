@@ -2,7 +2,8 @@
   import { ChevronLeft, ChevronRight, PanelRightClose, PanelRightOpen, X } from "@lucide/svelte";
   import { m } from "../lib/i18n/index.svelte";
   import { mediaUrl } from "../lib/media";
-  import { download, toggleFavorite, vote } from "../lib/actions.svelte";
+  import { download, signedIn, toggleFavorite, vote } from "../lib/actions.svelte";
+  import { setMenu } from "../lib/sets.svelte";
   import { step, togglePanel, viewer } from "../lib/viewer.svelte";
   import InfoPanel from "./InfoPanel.svelte";
   import MediaStage from "./MediaStage.svelte";
@@ -10,6 +11,15 @@
   let { onclose, onpool }: { onclose: () => void; onpool: (id: number) => void } = $props();
 
   let stage: MediaStage | undefined = $state();
+
+  // The menu belongs to this viewing; the next one starts without it.
+  $effect(() => () => (setMenu.open = false));
+
+  function toggleSetMenu() {
+    if (!signedIn()) return;
+    setMenu.open = !setMenu.open;
+    if (setMenu.open && !viewer.panelOpen) togglePanel();
+  }
 
   // Neighbours' display images are fetched ahead, so stepping shows them at once.
   $effect(() => {
@@ -24,11 +34,13 @@
     // The video's own controls use the arrow keys to seek and to change the volume.
     const inVideo = event.target instanceof HTMLVideoElement;
     const post = viewer.post;
-    if (event.key === "Escape") onclose();
+    if (event.key === "Escape" && setMenu.open) setMenu.open = false;
+    else if (event.key === "Escape") onclose();
     else if (event.key === "ArrowUp" && !inVideo && post) vote(post, true);
     else if (event.key === "ArrowDown" && !inVideo && post) vote(post, false);
     else if (event.code === "KeyF" && post) toggleFavorite(post);
     else if (event.code === "KeyD" && post) download(post);
+    else if (event.code === "KeyS") toggleSetMenu();
     else if (event.key === "ArrowLeft" && !inVideo) step(-1);
     else if (event.key === "ArrowRight" && !inVideo) step(1);
     else if (event.code === "KeyI") togglePanel();
