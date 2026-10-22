@@ -379,10 +379,15 @@ e621은 색이 강한 그림이 수천 장 쏟아지는 곳이다. **색은 그�
 | 업데이트 | `tauri-plugin-updater` + GitHub Releases `latest.json` | 동일 |
 
 - macOS 최소 버전은 **14**로 둔다. 처음 이유였던 웹뷰 프록시는 없앴다. View Transitions 같은 웹 기능은 macOS 버전이 아니라 WebKit 버전(Safari 18 이상)에 달려 있어 14가 보장하지 않으므로 기능 검사로 쓴다(8절 움직임). 낮출 필요가 생기면 그때 기능별로 확인한다.
-- 버전은 `src-tauri/tauri.conf.json` 한곳에서만 관리한다. 태그(`v0.1.0`)를 푸시하면 Actions가 두 플랫폼을 빌드해 GitHub Release 초안을 만든다.
+- 버전은 `src-tauri/Cargo.toml` 한곳에서만 관리한다. e621 UA가 컴파일 때 `CARGO_PKG_VERSION`을 읽고, `tauri.conf.json`에 `version`이 없으면 Tauri도 이 값을 쓴다. 그래서 `tauri.conf.json`과 `package.json`에는 버전을 두지 않는다(2026-10-21 결정). 태그(`v0.1.0`)를 푸시하면 Actions가 태그와 이 버전이 같은지 확인하고 두 플랫폼을 빌드해 GitHub Release 초안을 만든다.
+- main에 푸시하거나 PR을 열면 `.github/workflows/ci.yml`이 macOS·Windows에서 검사(`npm test`·`check`·`build`, `cargo fmt`·`clippy`·`test`)를 돌린다. Rust는 로컬과 같은 버전으로 고정해 새 clippy 규칙이 먼저 CI를 깨지 않게 한다. 액션은 커밋 SHA로 고정한다.
+- Windows 산출물은 실제 Windows에서 터널·키체인·`media://`를 확인할 때까지 공개 릴리스에 올리지 않는다(2026-10-21 결정). CI에서는 처음부터 빌드·검사한다.
 - 업데이트 서명 키(`tauri signer generate`)의 개인 키는 GitHub Secrets에만 둔다. 잃어버리면 기존 설치본에 업데이트를 보낼 수 없으므로 따로 백업한다.
 - 공증용 Apple 자격 증명(App Store Connect API 키)도 GitHub Secrets에 둔다.
-- **라이선스**: 저장소는 MIT(`LICENSE`). 배포물에는 의존성 라이선스 고지를 함께 넣는다. gotatun은 MPL-2.0이라 소스를 어디서 받는지 알려야 하고, Wanted Sans는 OFL 전문(`src/assets/fonts/WantedSans-OFL.txt`)을 함께 둔다. 고지 파일은 1단계 11번에서 도구(예: cargo-about)로 만든다.
+- **업데이트 경로**: 업데이트 확인·받기도 앱 SOCKS(`socks5h://`)를 거친다. 그래서 킬 스위치가 그대로 적용된다(막힘이면 나가지 않고, Mullvad면 터널로). `tauri-plugin-updater`의 시스템 프록시 기능은 끈다. 확인·받기·설치는 Rust 명령으로 만들고 JS 플러그인 API는 쓰지 않는다. 프록시와 시간 제한을 Rust가 정하고 웹뷰 권한도 늘지 않는다. 주소는 `https://github.com/nyabi-gh/Tailgate/releases/latest/download/latest.json`이고, 초안과 사전 릴리스는 이 주소에 잡히지 않는다.
+- **업데이트 화면**: 연결이 처음 열린 뒤 실행마다 한 번 확인한다("자동으로 확인", 기본 켬). 설정 맨 아래에 정보 칸을 두고 버전, [업데이트 확인], 자동 확인, 오픈 소스 라이선스, GitHub 링크를 넣는다. 새 버전이 있으면 시트에 버전과 릴리스 노트를 보여 주고 [업데이트] / [나중에]를 묻는다. 진행률을 보여 준 뒤 macOS는 [다시 시작]으로 다시 켜고, Windows는 NSIS `passive` 설치가 앱을 닫고 진행한다.
+- **macOS 서명**: hardened runtime(Tauri 기본값)을 쓰고 엔타이틀먼트는 두지 않는다(샌드박스를 쓰지 않고 키체인은 `keychain` 방식). 공증은 App Store Connect API 키로 하고, CI에서는 임시 키체인에 인증서를 넣는다. 서명한 앱은 개발 빌드가 만든 키체인 항목을 읽을 때 허용 창을 한 번 띄운다.
+- **라이선스**: 저장소는 MIT(`LICENSE`). 배포물에는 의존성 라이선스 고지 `THIRD-PARTY-NOTICES.html`을 함께 넣는다. Rust 쪽은 cargo-about으로 두 플랫폼 타깃을 합쳐 만들고, JS 쪽은 번들에 들어가는 패키지만 스크립트로 모은다. 여기에 Tailgate MIT와 Wanted Sans OFL 전문(`src/assets/fonts/WantedSans-OFL.txt`)을 더한다. gotatun 등 MPL-2.0 크레이트는 소스를 어디서 받는지 적는다. 이 파일은 `npm run notices`로 만들어 저장소에 커밋하고(바뀐 내용을 리뷰할 수 있게), CI가 최신인지 확인한다. 앱에서는 정보 칸의 버튼이 번들 리소스를 기본 브라우저로 연다.
 - **배포 시 e621 UA**: 로그인한 사용자 이름을 넣고, 로그인하지 않았으면 개발자 사용자명을 넣는다(`Tailgate/0.1.0 (by Nyabi on e621)`).
 
 ## 11. 위험 요소
@@ -419,7 +424,7 @@ e621은 색이 강한 그림이 수천 장 쏟아지는 곳이다. **색은 그�
 8. 즐겨찾기·투표·다운로드.
 9. 연결 설정 완성: 설정 화면(직접 / .conf / Mullvad 로그인·서버 선택), 서버 목록 캐시, 실행 중 끊김 감지·재연결, 라우트 전환 시 연결 끊기(6.3절 4·5).
 10. 설정: 10-1 설정 파일 확장·언어·18세 확인, 10-2 칸 폭 기억·최근 검색어·블랙리스트 다시 받기, 10-3 다운로드 폴더·파일 이름 규칙, 10-4 이미지 디스크 캐시·비우기.
-11. 배포: GitHub Actions(두 플랫폼), macOS 서명·공증, 업데이터, 라이선스 고지.
+11. 배포: 11-1 버전 한곳·CI(두 플랫폼 검사), 11-2 라이선스 고지, 11-3 업데이터·정보 칸, 11-4 배포 워크플로·macOS 서명·공증·첫 초안 릴리스.
 
 **2단계** 태그 동작·탭 → Pool → Set → 댓글/DText → 인기
 
