@@ -31,7 +31,7 @@ Windows·macOS용 e621 뷰어. 다른 사람에게도 배포한다.
 | 언어 | 기본 영어, 영어·한국어 지원 | 9절 |
 | 배포 | GitHub 공개 저장소 `Tailgate`, 그 저장소의 Releases로 자동 업데이트 | 다른 사람에게도 배포한다 |
 | 라이선스 | MIT | |
-| 서명 | Windows 미서명. macOS는 Apple Silicon 전용 + Developer ID 서명·공증 | |
+| 서명 | Windows 미서명. macOS는 Apple Silicon 전용 + ad-hoc 서명, 공증 안 함(2026-10-22 변경) | 사용자 결정. 받은 사람은 처음 한 번 `xattr`로 격리 표시를 지운다(README). 처음 계획은 Developer ID 서명·공증 |
 | 연결 | 앱 내부 전용 VPN(WireGuard 설정 파일 또는 Mullvad 계정). 이 앱의 트래픽만 터널로 보낸다 | 시스템 VPN 없이 e621에 닿고, 다른 앱에는 영향이 없다. 개발 중 API 검증은 시스템 VPN으로 한다 |
 | 터널 구현 | gotatun 0.10 + smoltcp 0.14를 직접 조립 | `wireguard-netstack`은 GPL이라 배포 바이너리가 GPL이 되고, 오래된 gotatun 0.2에 묶여 있다 |
 | 미디어 | Rust가 받아 `media://`로 웹뷰에 넘긴다(사용자 승인) | static1 핫링크 차단(research.md 7절) |
@@ -375,18 +375,18 @@ e621은 색이 강한 그림이 수천 장 쏟아지는 곳이다. **색은 그�
 |---|---|---|
 | 산출물 | `.dmg` (Apple Silicon, macOS 14 이상) | NSIS `-setup.exe` (x64, Windows 10/11) |
 | 빌드 위치 | GitHub Actions `macos-latest` (로컬도 가능) | GitHub Actions `windows-latest` |
-| 서명 | Developer ID Application + 공증 | 미서명 (첫 실행 시 SmartScreen 경고) |
+| 서명 | ad-hoc, 공증 안 함 (처음 한 번 `xattr -dr com.apple.quarantine`) | 미서명 (첫 실행 시 SmartScreen 경고) |
 | 업데이트 | `tauri-plugin-updater` + GitHub Releases `latest.json` | 동일 |
 
 - macOS 최소 버전은 **14**로 둔다. 처음 이유였던 웹뷰 프록시는 없앴다. View Transitions 같은 웹 기능은 macOS 버전이 아니라 WebKit 버전(Safari 18 이상)에 달려 있어 14가 보장하지 않으므로 기능 검사로 쓴다(8절 움직임). 낮출 필요가 생기면 그때 기능별로 확인한다.
 - 버전은 `src-tauri/Cargo.toml` 한곳에서만 관리한다. e621 UA가 컴파일 때 `CARGO_PKG_VERSION`을 읽고, `tauri.conf.json`에 `version`이 없으면 Tauri도 이 값을 쓴다. 그래서 `tauri.conf.json`과 `package.json`에는 버전을 두지 않는다(2026-10-21 결정). 릴리스는 주석 태그(`git tag -a v0.1.0`)를 푸시해 만든다. 태그 메시지가 릴리스 노트이자 앱 업데이트 시트의 노트다.
 - main에 푸시하거나 PR을 열면 `.github/workflows/ci.yml`이 macOS·Windows에서 검사(`npm test`·`check`·`build`, `cargo fmt`·`clippy`·`test`)를 돌린다. Rust는 로컬과 같은 버전으로 고정해 새 clippy 규칙이 먼저 CI를 깨지 않게 한다. 액션은 커밋 SHA로 고정한다.
 - Windows 산출물은 실제 Windows에서 터널·키체인·`media://`를 확인할 때까지 공개 릴리스에 올리지 않는다(2026-10-21 결정). CI에서는 처음부터 빌드·검사한다.
-- **배포 워크플로**(`.github/workflows/release.yml`): `v*` 태그를 푸시하면 `ci.yml`의 검사를 먼저 돌리고, macOS에서 태그와 `Cargo.toml` 버전을 대조한 뒤 빌드·서명·`.app` 공증(Tauri), DMG 공증·staple, 서명 검사(`codesign`, `spctl`, `stapler`), `latest.json` 작성, GitHub Release **초안** 생성까지 한다. 공개는 사용자가 초안을 확인하고 누른다. Tauri는 DMG를 서명만 하고 공증하지 않아서, 산출물을 바로 올리는 tauri-action 대신 이 순서를 직접 쓴다(쓰기 권한을 가진 외부 액션도 하나 줄어든다). 업데이트 산출물(`createUpdaterArtifacts`)은 CI에서만 `--config`로 켜서 로컬 빌드에 서명 키가 필요 없게 한다. Windows는 같은 태그에서 NSIS를 빌드해 워크플로 산출물로만 남긴다.
-- 비밀 값은 GitHub 환경 `release`의 시크릿으로 두어 macOS 배포 작업만 읽게 한다: `APPLE_CERTIFICATE`(Developer ID Application `.p12`의 base64), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_API_KEY`(App Store Connect 키 ID), `APPLE_API_ISSUER`, `APPLE_API_KEY_P8`(`.p8` 내용), `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. 업데이트 서명 개인 키(2026-10-22 생성, 키 ID `8DFE5606731E91CB`, 암호 있음)는 잃어버리면 기존 설치본에 업데이트를 보낼 수 없으므로 사용자가 따로 백업한다.
+- **배포 워크플로**(`.github/workflows/release.yml`): `v*` 태그를 푸시하면 `ci.yml`의 검사를 먼저 돌리고, macOS에서 태그와 `Cargo.toml` 버전을 대조한 뒤 빌드(ad-hoc 서명), 서명 검사(`codesign --verify --deep --strict`, 식별자가 번들 ID인지, ad-hoc인지), `latest.json` 작성, GitHub Release **초안** 생성까지 한다. 공개는 사용자가 초안을 확인하고 누른다. tauri-action 대신 이 순서를 직접 쓴다. 공증하던 계획에서 DMG를 따로 공증하려고 정한 것이고, 공증을 뺀 뒤에도 쓰기 권한을 가진 외부 액션이 하나 적어서 그대로 둔다. 업데이트 산출물(`createUpdaterArtifacts`)은 CI에서만 `--config`로 켜서 로컬 빌드에 서명 키가 필요 없게 한다. Windows는 같은 태그에서 NSIS를 빌드해 워크플로 산출물로만 남긴다.
+- 비밀 값은 GitHub 환경 `release`(배포 대상은 `v*` 태그만)의 시크릿으로 두어 macOS 배포 작업만 읽게 한다: `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. 업데이트 서명 개인 키(2026-10-22 생성, 키 ID `8DFE5606731E91CB`, 암호 있음)는 잃어버리면 기존 설치본에 업데이트를 보낼 수 없으므로 사용자가 따로 백업한다.
 - **업데이트 경로**: 업데이트 확인·받기도 앱 SOCKS(`socks5h://`)를 거친다. 그래서 킬 스위치가 그대로 적용된다(막힘이면 나가지 않고, Mullvad면 터널로). `tauri-plugin-updater`의 시스템 프록시 기능은 끈다. 확인·받기·설치는 Rust 명령으로 만들고 JS 플러그인 API는 쓰지 않는다. 프록시와 시간 제한을 Rust가 정하고 웹뷰 권한도 늘지 않는다. 주소는 `https://github.com/nyabi-gh/Tailgate/releases/latest/download/latest.json`이고, 초안과 사전 릴리스는 이 주소에 잡히지 않는다.
 - **업데이트 화면**: 연결이 처음 열린 뒤 실행마다 한 번 확인한다("자동으로 확인", 기본 켬). 설정 맨 아래에 정보 칸을 두고 버전, [업데이트 확인], 자동 확인, 오픈 소스 라이선스, GitHub 링크를 넣는다. 새 버전이 있으면 시트에 버전과 릴리스 노트를 보여 주고 [업데이트] / [나중에]를 묻는다. 진행률을 보여 준 뒤 macOS는 [다시 시작]으로 다시 켜고, Windows는 NSIS `passive` 설치가 앱을 닫고 진행한다. 시트의 [나중에]는 이번 실행에서 다시 묻지 않고, 정보 칸의 [업데이트…]로 다시 연다. 18세 확인 전에는 앱 화면이 없으므로 확인도 하지 않는다.
-- **macOS 서명**: hardened runtime(Tauri 기본값)을 쓰고 엔타이틀먼트는 두지 않는다(샌드박스를 쓰지 않고 키체인은 `keychain` 방식). 공증은 App Store Connect API 키로 하고, CI에서는 임시 키체인에 인증서를 넣는다. 서명한 앱은 개발 빌드가 만든 키체인 항목을 읽을 때 허용 창을 한 번 띄운다.
+- **macOS 서명**: `bundle.macOS.signingIdentity`를 `"-"`로 두어 번들 전체를 ad-hoc 서명한다. 이 설정이 없으면 링커가 실행 파일만 서명해 번들이 봉인되지 않고(식별자 `tailgate-<해시>`), `codesign --verify`가 실패한다. hardened runtime(Tauri 기본값)을 쓰고 엔타이틀먼트는 두지 않는다. 공증하지 않으므로 받은 앱은 Gatekeeper가 막고, 사용자가 처음 한 번 `xattr -dr com.apple.quarantine /Applications/Tailgate.app`을 실행한다(README). 앱 안 업데이트로 받은 파일에는 격리 표시가 붙지 않아 다시 할 필요가 없다. ad-hoc 서명은 버전마다 서명이 달라져, 키체인 항목을 읽을 때 업데이트마다 허용 창이 다시 뜰 수 있다(README에 안내, 첫 업데이트 때 확인). 이를 없애려면 Developer ID 서명(공증 없이도 됨)이 필요하다.
 - **라이선스**: 저장소는 MIT(`LICENSE`). 배포물에는 의존성 라이선스 고지 `THIRD-PARTY-NOTICES.html`을 함께 넣는다. Rust 쪽은 cargo-about으로 두 플랫폼 타깃을 합쳐 만들고, JS 쪽은 번들에 들어가는 패키지만 스크립트로 모은다. 여기에 Tailgate MIT와 Wanted Sans OFL 전문(`src/assets/fonts/WantedSans-OFL.txt`)을 더한다. gotatun 등 MPL-2.0 크레이트는 소스를 어디서 받는지 적는다. 이 파일은 `npm run notices`(`scripts/notices.mjs`)로 만들어 `src-tauri/resources/`에 커밋하고(바뀐 내용을 리뷰할 수 있게), CI가 최신인지 확인한다. 웹 쪽은 Vite 빌드 결과의 모듈 목록으로 실제로 들어간 패키지만 고르고, CSS로 들어가는 Tailwind는 따로 더한다. cargo-about이 찾지 못하는 이름의 라이선스 파일(`LICENSE_MIT`, `license-mit`)은 스크립트가 크레이트 폴더에서 찾아 넣고, 파일이 아예 없는 크레이트는 표준 본문에 그렇다는 설명을 붙인다. 앱에서는 정보 칸의 버튼이 번들 리소스를 기본 브라우저로 연다.
 - **배포 시 e621 UA**: 로그인한 사용자 이름을 넣고, 로그인하지 않았으면 개발자 사용자명을 넣는다(`Tailgate/0.1.0 (by Nyabi on e621)`).
 
@@ -424,7 +424,7 @@ e621은 색이 강한 그림이 수천 장 쏟아지는 곳이다. **색은 그�
 8. 즐겨찾기·투표·다운로드.
 9. 연결 설정 완성: 설정 화면(직접 / .conf / Mullvad 로그인·서버 선택), 서버 목록 캐시, 실행 중 끊김 감지·재연결, 라우트 전환 시 연결 끊기(6.3절 4·5).
 10. 설정: 10-1 설정 파일 확장·언어·18세 확인, 10-2 칸 폭 기억·최근 검색어·블랙리스트 다시 받기, 10-3 다운로드 폴더·파일 이름 규칙, 10-4 이미지 디스크 캐시·비우기.
-11. 배포: 11-1 버전 한곳·CI(두 플랫폼 검사), 11-2 라이선스 고지, 11-3 업데이터·정보 칸, 11-4 배포 워크플로·macOS 서명·공증·첫 초안 릴리스.
+11. 배포: 11-1 버전 한곳·CI(두 플랫폼 검사), 11-2 라이선스 고지, 11-3 업데이터·정보 칸, 11-4 배포 워크플로·첫 초안 릴리스.
 
 **2단계** 태그 동작·탭 → Pool → Set → 댓글/DText → 인기
 
