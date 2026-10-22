@@ -6,6 +6,8 @@
   import PoolList from "./components/PoolList.svelte";
   import PoolsBar from "./components/PoolsBar.svelte";
   import PopularBar from "./components/PopularBar.svelte";
+  import SetList from "./components/SetList.svelte";
+  import SetsBar from "./components/SetsBar.svelte";
   import Settings from "./components/Settings.svelte";
   import SignInSheet from "./components/SignInSheet.svelte";
   import Sidebar from "./components/Sidebar.svelte";
@@ -24,6 +26,7 @@
     favorites,
     poolPosts,
     popular,
+    setPosts,
     startFavorites,
     startPopular,
     startSearch,
@@ -33,6 +36,17 @@
   import { cellWidth, rememberSearch, setCellWidth } from "./lib/settings.svelte";
   import type { Post } from "./lib/posts";
   import { closePool, openedPool, openPool, poolIndex } from "./lib/pools.svelte";
+  import {
+    closeSet,
+    markMySetsStale,
+    mySets,
+    mySetsStale,
+    openedSet,
+    openSet,
+    reloadMySets,
+    setIndex,
+    setMode,
+  } from "./lib/sets.svelte";
   import { checkOnceAutomatically } from "./lib/updates.svelte";
   import { closeViewer, openPost, viewer } from "./lib/viewer.svelte";
   import type { View } from "./lib/views";
@@ -44,6 +58,7 @@
   let favoritesGrid: Grid | undefined = $state();
   let popularGrid: Grid | undefined = $state();
   let poolGrid: Grid | undefined = $state();
+  let setGrid: Grid | undefined = $state();
   /** The grid the viewer was opened from, to close back into. */
   let openedFrom: Grid | undefined;
   let signInSheet: SignInSheet;
@@ -109,14 +124,24 @@
   }
 
   const activeGrid = $derived(
-    view === "favorites" ? favoritesGrid : view === "popular" ? popularGrid : view === "pools" ? poolGrid : searchGrid,
+    view === "favorites"
+      ? favoritesGrid
+      : view === "popular"
+        ? popularGrid
+        : view === "pools"
+          ? poolGrid
+          : view === "sets"
+            ? setGrid
+            : searchGrid,
   );
   const pool = $derived(openedPool());
+  const set = $derived(openedSet());
   const showsGrid = $derived(
     (view === "search" && tagSearch.query !== null) ||
       (view === "favorites" && favorites.query !== null) ||
       (view === "popular" && popular.query !== null) ||
-      (view === "pools" && pool !== null),
+      (view === "pools" && pool !== null) ||
+      (view === "sets" && set !== null),
   );
 
   /** From a post's pool in the viewer: the pool screen opens on it. */
@@ -139,6 +164,7 @@
       if (previousAccount !== undefined && previousAccount !== now) {
         if (tagSearch.query !== null) startSearch(tagSearch.query);
         if (now !== null && favorites.query !== null) startFavorites();
+        markMySetsStale();
       }
       previousAccount = now;
     });
@@ -162,6 +188,15 @@
   // The pool list loads the first time its screen opens.
   $effect(() => {
     if (view === "pools" && !untrack(() => poolIndex.started)) poolIndex.search({});
+  });
+
+  // Each list of the set screen loads the first time it shows; the user's own again after a change.
+  $effect(() => {
+    if (view !== "sets" || openedSet() !== null) return;
+    if (setMode.mode === "search" && !untrack(() => setIndex.started)) setIndex.search();
+    if (setMode.mode === "mine" && signedInAs !== null && (mySetsStale() || !untrack(() => mySets.started))) {
+      untrack(reloadMySets);
+    }
   });
 
   // The favorites load the first time their screen opens while signed in.
@@ -215,6 +250,28 @@
         </button>
       {:else if view === "pools"}
         <PoolsBar />
+      {:else if view === "sets" && set !== null}
+        <button
+          class="flex h-8 shrink-0 items-center gap-0.5 rounded-md pr-2.5 pl-1.5 text-ink/80 transition-colors hover:bg-hover"
+          onclick={closeSet}
+        >
+          <ChevronLeft size={16} strokeWidth={2} />{m().sets.back}
+        </button>
+        <div class="flex min-w-0 items-baseline gap-2">
+          <h1 class="truncate text-base font-strong">{set.set?.name ?? "…"}</h1>
+          {#if set.set && set.postCount !== null}
+            <span class="shrink-0 text-dim">set:{set.set.shortname} · {m().sets.posts(set.postCount)}</span>
+          {/if}
+        </div>
+        <button
+          class="ml-3 flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-ink/80 transition-colors hover:bg-hover"
+          onclick={() =>
+            openUrl(`https://e621.net/post_sets/${set.id}`).catch((cause) => console.error("could not open the set page", cause))}
+        >
+          <ExternalLink size={15} strokeWidth={1.75} />{m().sets.onE621}
+        </button>
+      {:else if view === "sets"}
+        <SetsBar />
       {:else}
         <TagInput bind:this={tagInput} bind:tags onsubmit={run} />
         <SortMenu {tags} onchange={run} />
@@ -296,6 +353,36 @@
             {transitionId}
             empty={m().pools.emptyPool}
             onopen={(post) => open(poolPosts, poolGrid, post)}
+          />
+        {/if}
+      </div>
+      <div class={["absolute inset-0", (view !== "sets" || set !== null || setMode.mode !== "mine") && "invisible"]}>
+        {#if signedInAs === null}
+          <div class="grid h-full place-items-center px-8 pb-[12vh] text-center">
+            <div class="flex flex-col items-center gap-3">
+              <p class="text-dim">{m().sets.signedOut}</p>
+              <button
+                class="h-8 rounded-md bg-focus px-3.5 font-medium text-panel"
+                onclick={() => signInSheet.open()}>{m().account.signIn}</button
+              >
+            </div>
+          </div>
+        {:else}
+          <SetList list={mySets} mine empty={m().sets.emptyMine} onopen={openSet} />
+        {/if}
+      </div>
+      <div class={["absolute inset-0", (view !== "sets" || set !== null || setMode.mode !== "search") && "invisible"]}>
+        <SetList list={setIndex} mine={false} empty={m().sets.empty} onopen={openSet} />
+      </div>
+      <div class={["absolute inset-0", (view !== "sets" || set === null) && "invisible"]}>
+        {#if set !== null && setPosts.query !== null}
+          <Grid
+            bind:this={setGrid}
+            list={setPosts}
+            bind:cellWidth={cellWidth, setCellWidth}
+            {transitionId}
+            empty={m().sets.emptySet}
+            onopen={(post) => open(setPosts, setGrid, post)}
           />
         {/if}
       </div>

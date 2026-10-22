@@ -149,6 +149,7 @@ export const tagSearch = new PostList();
 export const favorites = new PostList();
 export const popular = new PostList();
 export const poolPosts = new PostList();
+export const setPosts = new PostList();
 
 /** The popular period on screen, kept while other screens are open. */
 export const popularPeriod = $state<{ day: Day; scale: Scale }>({ day: today(), scale: "day" });
@@ -178,6 +179,7 @@ export async function watchBlacklist() {
     favorites.applyBlacklist(payload);
     popular.applyBlacklist(payload);
     poolPosts.applyBlacklist(payload);
+    setPosts.applyBlacklist(payload);
   });
 }
 
@@ -187,6 +189,7 @@ export function updatePost(id: number, change: (post: Post) => Post) {
   favorites.update(id, change);
   popular.update(id, change);
   poolPosts.update(id, change);
+  setPosts.update(id, change);
 }
 
 let categories = $state<Record<string, TagCategory>>({});
