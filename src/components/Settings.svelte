@@ -1,5 +1,6 @@
 <script lang="ts">
   import { ChevronDown, CircleAlert } from "@lucide/svelte";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { account, signOut, type SignInError } from "../lib/account.svelte";
   import {
     connection,
@@ -46,11 +47,22 @@
     recentSearches,
     setCellWidth,
   } from "../lib/settings.svelte";
+  import {
+    appVersion,
+    checkForUpdate,
+    checksAutomatically,
+    openNotices,
+    restart,
+    setChecksAutomatically,
+    showUpdate,
+    updateState,
+  } from "../lib/updates.svelte";
   import ConnectionStatus from "./ConnectionStatus.svelte";
   import MullvadSignInSheet from "./MullvadSignInSheet.svelte";
 
   let { onsignin }: { onsignin: () => void } = $props();
 
+  const SOURCE_URL = "https://github.com/nyabi-gh/Tailgate";
   const modes: ConnectionMode[] = ["direct", "wireGuard", "mullvad"];
   const languages: Language[] = ["system", "en", "ko"];
 
@@ -68,9 +80,11 @@
   let cache = $state<CacheUsage | null>(null);
   let cacheBusy = $state(false);
   let cacheError = $state<string | null>(null);
+  let aboutError = $state<string | null>(null);
   let mullvadSheet: MullvadSignInSheet;
 
   const status = $derived(connection());
+  const update = $derived(updateState());
   const user = $derived(account());
   const signedInToMullvad = $derived(details?.mullvadDevice != null);
 
@@ -180,6 +194,10 @@
   function ruleMessage(error: NameRuleError): string {
     const messages = m().settings.downloads.rule;
     return error.code === "unknownToken" ? messages.unknownToken(error.token) : messages[error.code];
+  }
+
+  async function showLicenses() {
+    aboutError = (await openNotices()) ? null : m().settings.about.licensesFailed;
   }
 
   async function leaveE621() {
@@ -519,6 +537,65 @@
       </p>
     {/if}
     <p class="px-1 text-dim">{m().settings.storage.note}</p>
+  </section>
+
+  <section class="flex flex-col gap-2">
+    <h2 class="px-1 font-strong">{m().settings.about.title}</h2>
+    <div class={group}>
+      <div class={row}>
+        <span class={label}>{m().settings.about.version}</span>
+        <span class="shrink-0 select-text">{appVersion()}</span>
+        <span class="min-w-0 truncate text-dim">
+          {#if update.phase === "checking"}
+            {m().settings.about.checking}
+          {:else if update.phase === "upToDate"}
+            {m().settings.about.upToDate}
+          {:else if update.phase === "checkFailed"}
+            {m().settings.about.checkFailed}
+          {:else if "update" in update}
+            {m().settings.about.available(update.update.version)}
+          {/if}
+        </span>
+        {#if update.phase === "installed"}
+          <button class={action} onclick={restart}>{m().update.restart}</button>
+        {:else if "update" in update}
+          <button class={action} onclick={showUpdate}>{m().settings.about.showUpdate}</button>
+        {:else}
+          <button class={action} disabled={update.phase === "checking"} onclick={checkForUpdate}>
+            {m().settings.about.check}
+          </button>
+        {/if}
+      </div>
+      <label class={[row, "cursor-default"]}>
+        <span class={label}>{m().settings.about.automatic}</span>
+        <input
+          type="checkbox"
+          class="ml-auto size-4 accent-focus"
+          checked={checksAutomatically()}
+          onchange={(event) => setChecksAutomatically(event.currentTarget.checked)}
+        />
+      </label>
+      <div class={row}>
+        <span class={label}>{m().settings.about.licenses}</span>
+        <button class={action} onclick={showLicenses}>{m().settings.about.open}</button>
+      </div>
+      <div class={row}>
+        <span class={label}>{m().settings.about.source}</span>
+        <span class="min-w-0 truncate text-dim select-text">github.com/nyabi-gh/Tailgate</span>
+        <button
+          class={action}
+          onclick={() => openUrl(SOURCE_URL).catch((cause) => console.error("could not open the source page", cause))}
+        >
+          {m().settings.about.open}
+        </button>
+      </div>
+    </div>
+    {#if aboutError}
+      <p class="flex items-start gap-2 px-1" role="alert">
+        <CircleAlert size={16} strokeWidth={1.75} class="mt-px shrink-0" />{aboutError}
+      </p>
+    {/if}
+    <p class="px-1 text-dim">{m().settings.about.note}</p>
   </section>
 </div>
 

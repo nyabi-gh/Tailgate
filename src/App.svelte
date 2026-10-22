@@ -8,15 +8,18 @@
   import SortMenu from "./components/SortMenu.svelte";
   import TagInput from "./components/TagInput.svelte";
   import Toasts from "./components/Toasts.svelte";
+  import UpdateSheet from "./components/UpdateSheet.svelte";
   import Viewer from "./components/Viewer.svelte";
   import { account } from "./lib/account.svelte";
   import { onSignInNeeded } from "./lib/actions.svelte";
+  import { canLoadRemote } from "./lib/connection.svelte";
   import { m } from "./lib/i18n/index.svelte";
   import { CELL_WIDTH } from "./lib/layout";
   import { isMac } from "./lib/platform";
   import { favorites, startFavorites, startSearch, tagSearch, type PostList } from "./lib/search.svelte";
   import { cellWidth, rememberSearch, setCellWidth } from "./lib/settings.svelte";
   import type { Post } from "./lib/posts";
+  import { checkOnceAutomatically } from "./lib/updates.svelte";
   import { closeViewer, openPost, viewer } from "./lib/viewer.svelte";
   import type { View } from "./lib/views";
 
@@ -117,6 +120,11 @@
   // A search without tags is e621's front page, the newest posts; the app opens on it.
   startSearch("");
 
+  // The update check goes through the proxy too, so it waits for a route.
+  $effect(() => {
+    if (canLoadRemote()) untrack(checkOnceAutomatically);
+  });
+
   // The favorites load the first time their screen opens while signed in.
   $effect(() => {
     if (view === "favorites" && signedInAs !== null && untrack(() => favorites.query) === null) startFavorites();
@@ -201,4 +209,5 @@
 {/if}
 
 <SignInSheet bind:this={signInSheet} />
+<UpdateSheet />
 <Toasts />
