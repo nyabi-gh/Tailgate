@@ -38,7 +38,7 @@
 | 즐겨찾기·투표·다운로드 | `api/`, `search.rs`, `download.rs`, `download/name.rs`, `downloadSettings.ts`, `actions.svelte.ts`, `search.svelte.ts`, `InfoPanel`, `Toasts`, `App` | 뷰어 패널의 ♥·▲·▼·↓와 F·↑·↓·D(누르면 바로 반영, e621 응답으로 맞추고 실패하면 되돌림), 로그인 안 했으면 로그인 시트, 다운로드는 설정의 폴더(기본 `~/Downloads/Tailgate`)에 이름 규칙(기본 `{id}_{artist}`, report.md 3절)대로 `.part`를 거쳐 저장·진행률·"Finder에서 보기", 사이드바 즐겨찾기 화면(즐겨찾기한 순서, 블랙리스트 적용). 검색과 즐겨찾기는 화면마다 따로 열려 결과와 스크롤을 기억 |
 | 버전·CI | `src-tauri/Cargo.toml`, `.github/workflows/ci.yml` | 버전은 `Cargo.toml` 한곳(`tauri.conf.json`·`package.json`에서 뺌). main 푸시·PR마다 macOS·Windows에서 검사 6개, Rust 1.98.1 고정, 액션은 SHA 고정(11-1). 아직 푸시하지 않아 CI는 돌아 본 적 없음 |
 | 업데이터·정보 칸 | `update.rs`, `commands.rs`, `settings.rs`, `updates.svelte.ts`, `UpdateSheet.svelte`, `Settings.svelte` | `tauri-plugin-updater`(시스템 프록시 끔)를 Rust 명령으로만 씀. 확인·받기는 앱 SOCKS를 거침. 연결이 처음 열리면 실행마다 한 번 자동 확인(설정 `updates.checkAutomatically`, 기본 켬), 새 버전이면 시트(버전·릴리스 노트·진행률·[다시 시작]). 설정 맨 아래 정보 칸: 버전·[업데이트 확인]·자동 확인·오픈 소스 라이선스(번들 리소스를 기본 브라우저로)·소스 코드 링크. `pubkey`는 사용자가 만든 키(ID `8DFE5606731E91CB`, 개인 키 `~/.tauri/tailgate.key`, 암호 있음, 사용자가 백업) |
-| 1단계 11-4 | | 시작 전(배포 워크플로·서명·공증) |
+| 배포 워크플로 | `.github/workflows/release.yml`, `ci.yml` | 주석 태그 `v*` → 검사(`ci.yml` 재사용) → macOS 빌드·서명·공증, DMG 공증·staple, 서명 검사, `latest.json`, Release 초안. Windows는 워크플로 산출물만(report.md 10절). **아직 한 번도 돌지 않음**: 인증서·시크릿이 없고 푸시 전(11-4) |
 
 ## 재검토에서 고친 것 (2026-10-19)
 
@@ -93,6 +93,7 @@
 | 10-22 | 11-1 버전 한곳·CI | CI 단계를 로컬에서 같은 옵션으로(`npm ci`, `clippy --locked -- -D warnings`, `test --locked`), `tauri build --bundles app` | 통과. `Info.plist`의 `CFBundleShortVersionString`·`CFBundleVersion`이 `Cargo.toml`의 0.1.0. `npm ci` 직후 첫 `vite build`만 4분 9초(바로 다시 하면 1.2초, 원인 미확인) |
 | 10-22 | 11-2 라이선스 고지 | `npm run notices` 두 번(같은 결과인지), 자리표시 본문 검색, 브라우저로 보기, 검사 6개, `tauri build --bundles app` | 통과. 378KB, 같은 결과. 처음에는 37개 크레이트가 `<year> <copyright holders>` 표준 본문으로 나옴: cargo-about이 `ignore`의 파일 유형 glob으로만 찾아 `LICENSE_MIT`·`license-mit`를 놓침. 스크립트가 크레이트 폴더에서 찾아 넣은 뒤 남은 것은 파일이 아예 없는 15개(objc2·webview2-com 계열, block2, dispatch2, alloc-stdlib)와 MPL 3개(gotatun·option-ext·selectors)로, 설명을 붙임. `.app`의 `Contents/Resources/THIRD-PARTY-NOTICES.html`이 원본과 같음 |
 | 10-22 | 11-3 업데이터·정보 칸 | `cargo test`(121: 업데이트 실패 코드 구분, 업데이트 설정 칸 저장·기본값), 검사 6개, 고지 다시 만듦(크레이트 356). 실제 업데이트: scratchpad의 테스트 키로 서명한 릴리스 0.1.0·0.1.1 빌드(주소·키·버전은 `--config`로만 덮어씀), 로컬 서버의 `latest.json`, 임시 설정(직접 연결) | 통과. 0.1.0이 연결 직후 `socks5h://127.0.0.1:…`로 `latest.json`을 받아 0.1.1을 찾음, 사용자가 시트에서 [업데이트]→[다시 시작], `.app`이 0.1.1로 바뀌고 다시 켜진 앱이 정보 칸에 0.1.1·최신 버전 표시(사용자 확인). 단일 실행 플러그인이 다시 시작을 막지 않음. 확인 뒤 임시 `settings.json` 지움 |
+| 10-22 | 11-4 배포 워크플로 | 워크플로 YAML 파싱, 임시 복제본에 주석 태그를 만들어 버전 대조·노트 추출·`latest.json` 생성 명령을 그대로 실행, 경량 태그 거부 확인, 서명 없는 로컬 `tauri build --bundles app,dmg` | 통과. 노트는 제목+본문, `latest.json`의 주소는 `releases/download/v0.1.0/Tailgate_0.1.0_aarch64.app.tar.gz`. DMG 이름이 워크플로가 찾는 `Tailgate_0.1.0_aarch64.dmg`와 같음. 서명·공증·Release 생성은 인증서와 시크릿이 없어 실행하지 못함 |
 | 10-21 | 최신순 첫 화면 | `cargo test`(100: 빈 검색이 `tags=`와 `b<id>` 커서로 요청), `npm run check`·`build`·`test`, 실제 앱(Vite 다시 불러오기) | 통과. 앱이 최신 게시물 격자로 열리고 정렬 "최신순" 표시. 같은 실행에서 쉬는 터널의 건강 검사가 2분마다 핸드셰이크를 마침(로그 `tunnel health check: handshake completed`) |
 
 ## 남은 일
@@ -130,7 +131,7 @@
 ## 다음 할 일
 
 1. 11-1 확인: 푸시한 뒤 CI 결과(특히 Windows). 푸시 시점은 사용자가 정한다.
-2. 11-4 배포 워크플로·서명·공증(report.md 10절, 2026-10-21 승인). 그 전에 사용자가 Developer ID Application 인증서와 App Store Connect API 키를 준비한다.
+2. 첫 배포(11-4 확인): 사용자가 Developer ID Application 인증서·App Store Connect API 키를 만들고 GitHub 환경 `release`에 시크릿 7개를 넣은 뒤, 푸시하고 주석 태그 `v0.1.0`을 푸시한다. 초안 릴리스의 DMG를 이 Mac에서 받아 `spctl`·`stapler`로 확인하고, 문제가 없으면 사용자가 공개한다.
 3. 사용자 확인(위 "남은 일" 첫 항목)과 푸시. 사용자는 확인을 코드를 다 쓴 뒤로 미뤘으므로, 11번과의 순서는 사용자가 정한다.
 
 ## 개발 메모
