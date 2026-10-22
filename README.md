@@ -12,6 +12,8 @@ Tailgate is not made by or affiliated with e621.
 ## Features
 
 - Search with tag autocomplete, sorting and an endless grid of thumbnails
+- Popular posts by day, week or month
+- Pools, read in order, and sets: browse yours or find others, and add posts to your own
 - Full-window viewer for images, GIFs and videos, with zoom
 - Favorites, votes and downloads with your e621 account (API key)
 - Your account's blacklist, applied the same way as on the site
