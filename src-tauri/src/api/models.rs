@@ -387,6 +387,51 @@ impl RawUser {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PoolCategory {
+    /// Meant to be read in order, like a comic.
+    Series,
+    Collection,
+}
+
+/// A pool. Its posts are listed by id, in reading order.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Pool {
+    pub id: u64,
+    /// e621 stores spaces as `_`; this is the name as shown.
+    pub name: String,
+    pub category: PoolCategory,
+    pub creator: Option<String>,
+    pub updated_at: String,
+    #[serde(skip)]
+    pub post_ids: Vec<u64>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct RawPool {
+    id: u64,
+    name: String,
+    category: PoolCategory,
+    creator_name: Option<String>,
+    updated_at: String,
+    post_ids: Vec<u64>,
+}
+
+impl From<RawPool> for Pool {
+    fn from(raw: RawPool) -> Self {
+        Self {
+            id: raw.id,
+            name: raw.name.replace('_', " "),
+            category: raw.category,
+            creator: raw.creator_name,
+            updated_at: raw.updated_at,
+            post_ids: raw.post_ids,
+        }
+    }
+}
+
 /// Posts from a `/posts.json` response, for tests elsewhere that start from real responses.
 #[cfg(test)]
 pub(crate) fn decode_posts(json: &str) -> Vec<Post> {
@@ -401,6 +446,21 @@ mod tests {
     fn posts(fixture: &str) -> Vec<Post> {
         let raw: RawPosts = serde_json::from_str(fixture).unwrap();
         raw.posts.into_iter().map(Post::from).collect()
+    }
+
+    #[test]
+    fn decodes_pools() {
+        let raw: Vec<RawPool> =
+            serde_json::from_str(include_str!("../../tests/fixtures/pools.json")).unwrap();
+        let pools: Vec<Pool> = raw.into_iter().map(Pool::from).collect();
+        assert_eq!(pools.len(), 2);
+        let pool = &pools[0];
+        assert_eq!(pool.id, 53114);
+        assert_eq!(pool.name, "MEAT by nsfuwu");
+        assert_eq!(pool.category, PoolCategory::Series);
+        assert_eq!(pool.creator.as_deref(), Some("VaurukBoy"));
+        assert_eq!(pool.post_ids.len(), 51);
+        assert_eq!(pool.post_ids[..2], [6062592, 6062593]);
     }
 
     #[test]

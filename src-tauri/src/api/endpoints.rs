@@ -1,13 +1,18 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde::Deserialize;
 
 use super::{
     Api, ApiError, Credentials,
-    models::{Favorited, Post, RawPostEnvelope, RawPosts, RawUser, TagSuggestion, User, Voted},
+    models::{
+        Favorited, Pool, PoolCategory, Post, RawPool, RawPostEnvelope, RawPosts, RawUser,
+        TagSuggestion, User, Voted,
+    },
 };
 
 pub const PAGE_SIZE: usize = 100;
+/// e621's own page size for pool lists.
+pub const POOL_PAGE_SIZE: usize = 75;
 /// `page=<number>` answers 410 past this page; only `page=b<id>` goes deeper.
 const MAX_PAGE_NUMBER: u32 = 750;
 
@@ -75,6 +80,70 @@ impl Api {
         Ok(raw.posts.into_iter().map(Post::from).collect())
     }
 
+    pub async fn pools(&self, query: &PoolQuery, page: u32) -> Result<Vec<Pool>, ApiError> {
+        let (limit, page) = (POOL_PAGE_SIZE.to_string(), page.to_string());
+        let mut params = vec![
+            ("search[order]", query.order.as_param()),
+            ("limit", limit.as_str()),
+            ("page", page.as_str()),
+        ];
+        let name = query.name.trim();
+        if !name.is_empty() {
+            params.push(("search[name_matches]", name));
+        }
+        if let Some(category) = query.category {
+            params.push((
+                "search[category]",
+                match category {
+                    PoolCategory::Series => "series",
+                    PoolCategory::Collection => "collection",
+                },
+            ));
+        }
+        let raw: Vec<RawPool> = self.client.get("pools.json", &params).await?;
+        Ok(raw.into_iter().map(Pool::from).collect())
+    }
+
+    pub async fn pool(&self, id: u64) -> Result<Pool, ApiError> {
+        let raw: RawPool = self.client.get(&format!("pools/{id}.json"), &[]).await?;
+        Ok(raw.into())
+    }
+
+    /// In no particular order.
+    pub async fn pools_by_id(&self, ids: &[u64]) -> Result<Vec<Pool>, ApiError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids = join_ids(ids);
+        let raw: Vec<RawPool> = self
+            .client
+            .get("pools.json", &[("search[id]", &ids)])
+            .await?;
+        Ok(raw.into_iter().map(Pool::from).collect())
+    }
+
+    /// In the order of `ids`. Posts e621 leaves out, such as deleted ones, are missing.
+    pub async fn posts_by_id(&self, ids: &[u64]) -> Result<Vec<Post>, ApiError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let (tags, limit) = (format!("id:{}", join_ids(ids)), ids.len().to_string());
+        let raw: RawPosts = self
+            .client
+            .get("posts.json", &[("tags", &tags), ("limit", &limit)])
+            .await?;
+        // e621 answers newest first, whatever the order asked for.
+        let mut found: HashMap<u64, Post> = raw
+            .posts
+            .into_iter()
+            .map(|post| {
+                let post = Post::from(post);
+                (post.id, post)
+            })
+            .collect();
+        Ok(ids.iter().filter_map(|id| found.remove(id)).collect())
+    }
+
     async fn popular(&self, popular: &Popular) -> Result<Vec<Post>, ApiError> {
         let raw: RawPosts = self
             .client
@@ -98,6 +167,44 @@ impl Api {
         }
         let raw: RawPosts = self.client.get("posts.json", &query).await?;
         Ok(raw.posts.into_iter().map(Post::from).collect())
+    }
+}
+
+fn join_ids(ids: &[u64]) -> String {
+    ids.iter().map(u64::to_string).collect::<Vec<_>>().join(",")
+}
+
+/// What the pool list shows.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoolQuery {
+    /// Part of the name; empty for all pools.
+    pub name: String,
+    /// `None` for both.
+    pub category: Option<PoolCategory>,
+    pub order: PoolOrder,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PoolOrder {
+    /// Recently changed first.
+    Updated,
+    Name,
+    /// Newest first.
+    Created,
+    /// Largest first.
+    PostCount,
+}
+
+impl PoolOrder {
+    fn as_param(self) -> &'static str {
+        match self {
+            Self::Updated => "updated_at",
+            Self::Name => "name",
+            Self::Created => "created_at",
+            Self::PostCount => "post_count",
+        }
     }
 }
 
@@ -146,6 +253,8 @@ enum Source {
     Favorites,
     /// A single page: e621 offers no more.
     Popular(Popular),
+    /// A pool's or a set's posts, in its order, [`PAGE_SIZE`] ids per page.
+    Ids(Vec<u64>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -183,6 +292,15 @@ impl PostSearch {
         }
     }
 
+    /// Pages by number, each the next [`PAGE_SIZE`] of `ids`.
+    pub fn ids(ids: Vec<u64>) -> Self {
+        Self {
+            next: (!ids.is_empty()).then_some(Page::Number(1)),
+            source: Source::Ids(ids),
+            seen: HashSet::new(),
+        }
+    }
+
     pub fn popular(popular: Popular) -> Self {
         Self {
             source: Source::Popular(popular),
@@ -210,6 +328,10 @@ impl PostSearch {
             (Source::Favorites, Page::Number(number)) => api.favorites(number).await?,
             (Source::Favorites, _) => unreachable!("favorites page by number"),
             (Source::Popular(popular), _) => api.popular(popular).await?,
+            (Source::Ids(ids), Page::Number(number)) => {
+                api.posts_by_id(ids_page(ids, number)).await?
+            }
+            (Source::Ids(_), _) => unreachable!("id lists page by number"),
             (Source::Tags(tags), page) => {
                 let param = match page {
                     Page::First => None,
@@ -219,8 +341,14 @@ impl PostSearch {
                 api.posts(tags, param.as_deref()).await?
             }
         };
-        self.next = match self.source {
+        self.next = match &self.source {
             Source::Popular(_) => None,
+            Source::Ids(ids) => match page {
+                Page::Number(number) if (number as usize) * PAGE_SIZE < ids.len() => {
+                    Some(Page::Number(number + 1))
+                }
+                _ => None,
+            },
             Source::Tags(_) | Source::Favorites => following(page, &posts),
         };
         Ok(posts
@@ -228,6 +356,12 @@ impl PostSearch {
             .filter(|post| self.seen.insert(post.id))
             .collect())
     }
+}
+
+/// Page `number`, counted from 1, of `ids`.
+fn ids_page(ids: &[u64], number: u32) -> &[u64] {
+    let start = (number as usize - 1) * PAGE_SIZE;
+    &ids[start.min(ids.len())..(start + PAGE_SIZE).min(ids.len())]
 }
 
 fn following(page: Page, posts: &[Post]) -> Option<Page> {

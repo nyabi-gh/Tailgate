@@ -8,8 +8,8 @@ use tauri::{AppHandle, Emitter, Manager, State, ipc::Channel, path::BaseDirector
 use crate::{
     account::{Account, AccountError, AccountState},
     api::{
-        Api, ApiError, Popular,
-        models::{Favorited, TagSuggestion, Voted},
+        Api, ApiError, PoolQuery, Popular,
+        models::{Favorited, Pool, TagSuggestion, Voted},
     },
     download::{
         DownloadDetails, DownloadError, DownloadRequest, Downloads, NameRuleError, Saved,
@@ -18,7 +18,7 @@ use crate::{
     media::{self, CacheUsage, ClearError, Media},
     network::{Connection, ConnectionDetails, Network, SettingsChangeError},
     relays::LocationChoice,
-    search::{SearchError, SearchPage, Searches},
+    search::{OpenedPool, PoolPage, SearchError, SearchPage, Searches},
     settings::{Browse, CacheSettings, ConnectionMode, General, Settings, UpdateSettings},
     update::{Available, Progress, UpdateError, Updates},
 };
@@ -161,6 +161,31 @@ pub fn search_start_favorites(searches: State<'_, Arc<Searches>>) -> u64 {
 #[tauri::command]
 pub fn search_start_popular(searches: State<'_, Arc<Searches>>, popular: Popular) -> u64 {
     searches.start_popular(popular)
+}
+
+#[tauri::command]
+pub async fn search_start_pool(
+    searches: State<'_, Arc<Searches>>,
+    api: State<'_, Arc<Api>>,
+    id: u64,
+) -> Result<OpenedPool, ApiError> {
+    searches.start_pool(&api, id).await
+}
+
+#[tauri::command]
+pub async fn pools_page(
+    searches: State<'_, Arc<Searches>>,
+    api: State<'_, Arc<Api>>,
+    query: PoolQuery,
+    page: u32,
+) -> Result<PoolPage, ApiError> {
+    searches.pool_page(&api, &query, page).await
+}
+
+/// For naming the pools a post is in.
+#[tauri::command]
+pub async fn pools_by_id(api: State<'_, Arc<Api>>, ids: Vec<u64>) -> Result<Vec<Pool>, ApiError> {
+    api.pools_by_id(&ids).await
 }
 
 #[tauri::command]

@@ -14,8 +14,8 @@ use tokio::{sync::Mutex, time::Instant};
 
 use crate::{
     api::{
-        Api, ApiError, Credentials, Popular, PostSearch,
-        models::{Post, TagCategory, Tags},
+        Api, ApiError, Credentials, POOL_PAGE_SIZE, PoolQuery, Popular, PostSearch,
+        models::{Pool, Post, TagCategory, Tags},
     },
     blacklist::Blacklist,
 };
@@ -65,6 +65,7 @@ enum Screen {
     Search,
     Favorites,
     Popular,
+    Pool,
 }
 
 struct OpenSearch {
@@ -73,6 +74,32 @@ struct OpenSearch {
     pages: Mutex<PostSearch>,
     /// Every post handed to the UI, so a changed blacklist can mark them anew.
     loaded: std::sync::Mutex<Vec<Post>>,
+}
+
+/// One pool in the pool list.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PoolSummary {
+    #[serde(flatten)]
+    pub pool: Pool,
+    pub post_count: usize,
+    /// The first post's preview; `None` when it is gone or blacklisted.
+    pub cover: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+pub struct PoolPage {
+    pub pools: Vec<PoolSummary>,
+    pub done: bool,
+}
+
+/// A pool opened for reading: its posts come through the search like any other screen's.
+#[derive(Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenedPool {
+    pub search: u64,
+    pub pool: Pool,
+    pub post_count: usize,
 }
 
 /// The blacklist of the credentials it was fetched with, so signing in or out fetches anew.
@@ -135,6 +162,63 @@ impl Searches {
             pages: Mutex::new(PostSearch::popular(popular)),
             loaded: std::sync::Mutex::default(),
         })
+    }
+
+    /// The pool's posts in reading order. Asks e621 for the pool first, for its current list.
+    pub async fn start_pool(&self, api: &Api, id: u64) -> Result<OpenedPool, ApiError> {
+        let pool = api.pool(id).await?;
+        let post_count = pool.post_ids.len();
+        let search = self.open(OpenSearch {
+            screen: Screen::Pool,
+            tags: Vec::new(),
+            pages: Mutex::new(PostSearch::ids(pool.post_ids.clone())),
+            loaded: std::sync::Mutex::default(),
+        });
+        Ok(OpenedPool {
+            search,
+            pool,
+            post_count,
+        })
+    }
+
+    /// One page of the pool list, each pool with its first post as the cover: one more request
+    /// for the page's covers together.
+    pub async fn pool_page(
+        &self,
+        api: &Api,
+        query: &PoolQuery,
+        page: u32,
+    ) -> Result<PoolPage, ApiError> {
+        let pools = api.pools(query, page).await?;
+        let covers: Vec<u64> = pools
+            .iter()
+            .filter_map(|pool| pool.post_ids.first().copied())
+            .collect();
+        let blacklist = {
+            let mut cached = self.blacklist.lock().await;
+            self.current_blacklist(&mut cached, api).await?.0
+        };
+        let covers: HashMap<u64, Post> = api
+            .posts_by_id(&covers)
+            .await?
+            .into_iter()
+            .map(|post| (post.id, post))
+            .collect();
+        let done = pools.len() < POOL_PAGE_SIZE;
+        let pools = pools
+            .into_iter()
+            .map(|pool| PoolSummary {
+                cover: pool
+                    .post_ids
+                    .first()
+                    .and_then(|id| covers.get(id))
+                    .filter(|post| !blacklist.matches(post))
+                    .and_then(|post| post.preview.url.clone()),
+                post_count: pool.post_ids.len(),
+                pool,
+            })
+            .collect();
+        Ok(PoolPage { pools, done })
     }
 
     /// Closes the search the same screen had open before.
@@ -365,6 +449,60 @@ mod tests {
         let (base, received) = serve(responses).await;
         let http = reqwest::Client::builder().no_proxy().build().unwrap();
         (Api::with_base(http, UserAgent::new(), base), received)
+    }
+
+    fn pool(id: u64, post_ids: &[u64]) -> Value {
+        json!({
+            "id": id,
+            "name": format!("pool_{id}"),
+            "category": "series",
+            "creator_name": "someone",
+            "updated_at": "2026-10-22T00:00:00.000-04:00",
+            "post_ids": post_ids,
+        })
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn pool_pages_show_first_posts_as_covers_unless_blacklisted() {
+        let pools = json!([pool(1, &[10, 11]), pool(2, &[20]), pool(3, &[])]);
+        let (api, mut received) = api(vec![ok(&pools), me("id:20"), ok(&page([20, 10]))]).await;
+        let searches = Searches::default();
+        let query = PoolQuery {
+            name: String::new(),
+            category: None,
+            order: crate::api::PoolOrder::Updated,
+        };
+        let page = searches.pool_page(&api, &query, 1).await.unwrap();
+        assert!(page.done);
+        let summary: Vec<_> = page
+            .pools
+            .iter()
+            .map(|pool| (pool.pool.id, pool.post_count, pool.cover.is_some()))
+            .collect();
+        assert_eq!(summary, [(1, 2, true), (2, 1, false), (3, 0, false)]);
+        assert_eq!(page.pools[0].pool.name, "pool 1");
+
+        let requests: Vec<String> = std::iter::from_fn(|| received.try_recv().ok())
+            .map(|request| request.target)
+            .collect();
+        assert_eq!(requests[2], "/posts.json?tags=id%3A10%2C20&limit=2");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn opening_a_pool_reads_its_posts_in_order() {
+        let (api, _received) = api(vec![
+            ok(&pool(7, &[30, 10, 20])),
+            me(""),
+            ok(&page([30, 20, 10])),
+        ])
+        .await;
+        let searches = Searches::default();
+        let opened = searches.start_pool(&api, 7).await.unwrap();
+        assert_eq!(opened.post_count, 3);
+        let page = searches.next(&api, opened.search).await.unwrap();
+        let ids: Vec<u64> = page.posts.iter().map(|post| post.id).collect();
+        assert_eq!(ids, [30, 10, 20]);
+        assert!(page.done);
     }
 
     #[tokio::test(start_paused = true)]

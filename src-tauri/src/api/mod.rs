@@ -15,7 +15,7 @@ use tokio::sync::watch;
 use crate::network::UserAgent;
 use client::Client;
 pub use client::Credentials;
-pub use endpoints::{PAGE_SIZE, Popular, PostSearch, Scale};
+pub use endpoints::{PAGE_SIZE, POOL_PAGE_SIZE, PoolOrder, PoolQuery, Popular, PostSearch, Scale};
 
 const BASE: &str = "https://e621.net/";
 
@@ -98,6 +98,7 @@ mod tests {
     use tokio::{net::TcpListener, sync::mpsc};
 
     use super::{
+        models::{PoolCategory, Post},
         testing::{Received, json_response, ok, serve},
         *,
     };
@@ -293,6 +294,74 @@ mod tests {
         assert_eq!(
             requests[0].target,
             "/popular.json?date=2026-10-22&scale=week&time_zone=Asia%2FSeoul"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reads_an_id_list_in_its_own_order_page_by_page() {
+        // e621 answers newest first and leaves out deleted posts, here 2.
+        let first: Vec<u64> = (1..=100).rev().filter(|id| *id != 2).collect();
+        let (api, mut received) =
+            fake_api(vec![ok(&posts(first)), ok(&posts((101..=150).rev()))]).await;
+        let mut search = PostSearch::ids((1..=150).collect());
+        let ids = |posts: Vec<_>| posts.iter().map(|post: &Post| post.id).collect::<Vec<_>>();
+
+        let page = ids(search.next_page(&api).await.unwrap());
+        assert_eq!(page.len(), 99);
+        assert_eq!(page[..3], [1, 3, 4]);
+        assert!(!search.is_done());
+        let page = ids(search.next_page(&api).await.unwrap());
+        assert_eq!(page, (101..=150).collect::<Vec<_>>());
+        assert!(search.is_done());
+
+        let requests = drain(&mut received);
+        assert!(
+            requests[0]
+                .target
+                .starts_with("/posts.json?tags=id%3A1%2C2%2C3%2C")
+        );
+        assert!(requests[0].target.ends_with("%2C100&limit=100"));
+        assert!(
+            requests[1]
+                .target
+                .starts_with("/posts.json?tags=id%3A101%2C")
+        );
+        assert!(requests[1].target.ends_with("%2C150&limit=50"));
+    }
+
+    #[tokio::test]
+    async fn an_empty_id_list_asks_for_nothing() {
+        let (api, mut received) = fake_api(Vec::new()).await;
+        let mut search = PostSearch::ids(Vec::new());
+        assert!(search.is_done());
+        assert!(search.next_page(&api).await.unwrap().is_empty());
+        assert!(api.posts_by_id(&[]).await.unwrap().is_empty());
+        assert!(drain(&mut received).is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn asks_for_pools_by_name_category_and_order() {
+        let (api, mut received) = fake_api(vec![ok(&json!([])), ok(&json!([]))]).await;
+        let query = PoolQuery {
+            name: " wolf pack ".into(),
+            category: Some(PoolCategory::Series),
+            order: PoolOrder::PostCount,
+        };
+        api.pools(&query, 2).await.unwrap();
+        let all = PoolQuery {
+            name: String::new(),
+            category: None,
+            order: PoolOrder::Updated,
+        };
+        api.pools(&all, 1).await.unwrap();
+        let requests = drain(&mut received);
+        assert_eq!(
+            requests[0].target,
+            "/pools.json?search%5Border%5D=post_count&limit=75&page=2&search%5Bname_matches%5D=wolf+pack&search%5Bcategory%5D=series"
+        );
+        assert_eq!(
+            requests[1].target,
+            "/pools.json?search%5Border%5D=updated_at&limit=75&page=1"
         );
     }
 
