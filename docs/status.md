@@ -29,7 +29,7 @@
 | 실패 코드 | `network.rs` → `connection.svelte.ts` → i18n | report.md 6.4절의 11가지와 설정 변경 오류 |
 | 타임아웃 | `network.rs`, `tunnel/` | report.md 6.5절 |
 | `media://` | `media/`, `media.ts`, `storage.ts` | 이미지는 통째로, 동영상은 1MB 블록 캐시(`media/blocks.rs`, 메모리 256MB, 다음 블록 미리 받기)로 응답. report.md 7.2절. 이미지는 디스크 캐시(`media/disk.rs`, 기본 1GB, 오래 쓰지 않은 것부터 지움)에서 먼저 찾고, 없으면 받아서 남김. report.md 7.3절 |
-| 라이선스 | `LICENSE` | MIT. 배포물 고지는 1단계 11번 |
+| 라이선스 | `LICENSE`, `scripts/notices.mjs`, `src-tauri/about.toml`, `src-tauri/resources/THIRD-PARTY-NOTICES.html` | MIT. 배포물 고지는 `npm run notices`로 만들어 커밋하고 번들 리소스로 넣음(Tailgate·Wanted Sans·웹 패키지 7개·크레이트 344개, report.md 10절). CI(macOS)가 최신인지 확인. 앱에서 여는 버튼은 11-3 |
 | API 계층 | `api/`, `examples/api_probe.rs` | posts 검색(`PostSearch`, 100개씩, `b<id>` 또는 페이지 번호, 중복 제거), 단일 게시물, `users/me`, 자동완성. 요청 시작 간격 1초, UA, Basic 인증(자격 증명 설정 자리만, 저장은 4번), 429·503 재시도, 오류 코드. 8번에서 POST·DELETE(폼 본문), 즐겨찾기·투표, 내 즐겨찾기 목록 추가 |
 | 계정 | `account.rs`, `account.svelte.ts`, `SignInSheet.svelte` | 로그인 시트(사이드바), e621 확인 뒤 키체인 `e621-account`에 저장, 로그아웃, 시작 시 복원하고 연결이 열리면 `/users/me`로 확인, 401이면 저장된 키를 지우고 "다시 로그인". UA는 API와 `media://` 모두 로그인한 이름. API 키 발급 페이지는 `tauri-plugin-opener`로 연다(권한은 7번에서 http/https 전체, 8번에서 파일 위치 열기 추가). 로그아웃은 실제 앱에서 안 해 봄 |
 | 검색 | `search.rs`, `search.svelte.ts`, `layout.ts`, `tags.ts`, `TagInput`, `SortMenu`, `Grid`, `Thumb` | 앱을 켜면 태그 없는 검색(최신 게시물)으로 시작, 태그를 모두 지우고 검색해도 같음(2026-10-21, 빈 검색 화면 대신), 태그 칩(카테고리 색: 자동완성과 첫 결과에서 앎, 메타태그는 meta 색, 제외는 취소선), 자동완성(3글자, 300ms, 접두어 캐시), 정렬 메뉴(`order:` 바꿈), 3:4 같은 크기 칸 격자(틈 3px, 그림은 칸을 채우게 자름. 2026-10-21 justified에서 바꿈), 가상 스크롤(±1화면), 남은 1.5화면에서 다음 페이지, ⌘/Ctrl+휠·슬라이더로 칸 폭 100~360(기본 180, 240 이상이면 `sample`, 멈춘 뒤 0.5초에 `settings.json`에 저장해 다음 실행에도 유지), 최근 검색어(태그 있는 검색만 10개, 빈 검색창에 포커스하면 목록, ↑/↓로 고르고 Enter, 아무것도 고르지 않은 Enter는 지금처럼 최신 게시물), 로딩·빈 결과·오류·다시 시도, 계정이 바뀌면 다시 검색, 썸네일을 누르면 뷰어 |
@@ -37,7 +37,7 @@
 | 뷰어 | `Viewer`, `MediaStage`, `InfoPanel`, `viewer.svelte.ts`, `zoom.ts`, `media.ts` | 썸네일에서 커지며 열리고 그 자리로 닫힘(View Transitions), 이미지 샘플 → 확대하거나 요청하면 원본, GIF는 원본, 동영상 720p 우선·반복·음소거 시작, 휠·핀치 확대·끌기·더블클릭 맞춤/1:1, 이전·다음(끝 5개 전에 다음 페이지), 정보 패널(점수·즐겨찾기·등급·파일·업로더·출처·카테고리별 태그), ←/→·Esc·I·0 |
 | 즐겨찾기·투표·다운로드 | `api/`, `search.rs`, `download.rs`, `download/name.rs`, `downloadSettings.ts`, `actions.svelte.ts`, `search.svelte.ts`, `InfoPanel`, `Toasts`, `App` | 뷰어 패널의 ♥·▲·▼·↓와 F·↑·↓·D(누르면 바로 반영, e621 응답으로 맞추고 실패하면 되돌림), 로그인 안 했으면 로그인 시트, 다운로드는 설정의 폴더(기본 `~/Downloads/Tailgate`)에 이름 규칙(기본 `{id}_{artist}`, report.md 3절)대로 `.part`를 거쳐 저장·진행률·"Finder에서 보기", 사이드바 즐겨찾기 화면(즐겨찾기한 순서, 블랙리스트 적용). 검색과 즐겨찾기는 화면마다 따로 열려 결과와 스크롤을 기억 |
 | 버전·CI | `src-tauri/Cargo.toml`, `.github/workflows/ci.yml` | 버전은 `Cargo.toml` 한곳(`tauri.conf.json`·`package.json`에서 뺌). main 푸시·PR마다 macOS·Windows에서 검사 6개, Rust 1.98.1 고정, 액션은 SHA 고정(11-1). 아직 푸시하지 않아 CI는 돌아 본 적 없음 |
-| 1단계 11-2~11-4 | | 시작 전(라이선스 고지, 업데이터·정보 칸, 배포 워크플로·서명·공증) |
+| 1단계 11-3~11-4 | | 시작 전(업데이터·정보 칸, 배포 워크플로·서명·공증) |
 
 ## 재검토에서 고친 것 (2026-10-19)
 
@@ -90,6 +90,7 @@
 | 10-21 | 10-4 이미지 디스크 캐시 | 측정(실행 중 다시 요청), `cargo test`(120: 다음 실행에도 남음, 오래 쓰지 않은 것부터 지움, 한도를 낮추면 바로 줄임, 비우기, 반쯤 쓴 파일 정리, `media`가 이미지는 남기고 동영상은 남기지 않음), `npm test`(24: 크기 표시), `cargo clippy`·`fmt`, `npm run check`·`build`, 실제 개발 앱 두 번 실행(터널) | 실행 중 다시 요청 0건(research.md 7절). 첫 실행 42개 저장(1.2MB), 다시 켜면 42건 중 41건 디스크 응답, 임시 코드로 비우기 → `media/` 삭제·`relays.json` 유지. 설정 화면 칸 순서 확인. 저장 공간 칸 캡처는 사용자 요청으로 중단. 확인 뒤 캐시와 `settings.json`은 지움 |
 | 10-22 | 전체 검사(10번 끝) | HEAD와 10-4 중간 커밋 a130dd3·9ee5f3b를 각각 임시 worktree에서 `cargo test`·`clippy --all-targets`·`fmt --check`, `npm test`·`check`·`build` | 모두 통과, 경고 0(Rust 120, vitest 24 / 중간 커밋은 22) |
 | 10-22 | 11-1 버전 한곳·CI | CI 단계를 로컬에서 같은 옵션으로(`npm ci`, `clippy --locked -- -D warnings`, `test --locked`), `tauri build --bundles app` | 통과. `Info.plist`의 `CFBundleShortVersionString`·`CFBundleVersion`이 `Cargo.toml`의 0.1.0. `npm ci` 직후 첫 `vite build`만 4분 9초(바로 다시 하면 1.2초, 원인 미확인) |
+| 10-22 | 11-2 라이선스 고지 | `npm run notices` 두 번(같은 결과인지), 자리표시 본문 검색, 브라우저로 보기, 검사 6개, `tauri build --bundles app` | 통과. 378KB, 같은 결과. 처음에는 37개 크레이트가 `<year> <copyright holders>` 표준 본문으로 나옴: cargo-about이 `ignore`의 파일 유형 glob으로만 찾아 `LICENSE_MIT`·`license-mit`를 놓침. 스크립트가 크레이트 폴더에서 찾아 넣은 뒤 남은 것은 파일이 아예 없는 15개(objc2·webview2-com 계열, block2, dispatch2, alloc-stdlib)와 MPL 3개(gotatun·option-ext·selectors)로, 설명을 붙임. `.app`의 `Contents/Resources/THIRD-PARTY-NOTICES.html`이 원본과 같음 |
 | 10-21 | 최신순 첫 화면 | `cargo test`(100: 빈 검색이 `tags=`와 `b<id>` 커서로 요청), `npm run check`·`build`·`test`, 실제 앱(Vite 다시 불러오기) | 통과. 앱이 최신 게시물 격자로 열리고 정렬 "최신순" 표시. 같은 실행에서 쉬는 터널의 건강 검사가 2분마다 핸드셰이크를 마침(로그 `tunnel health check: handshake completed`) |
 
 ## 남은 일
@@ -121,12 +122,11 @@
 - Windows 실측 전부: 터널, aws-lc-rs 빌드, WebView2의 `media://` Range, Mica, Ctrl K. Windows 기기나 VM이 필요하다.
 - macOS WKWebView의 WebM 재생 확인.
 - Developer ID Application 인증서 발급(1단계 11번 전, 키체인에 아직 없음).
-- 배포물의 의존성 라이선스 고지(1단계 11번).
 
 ## 다음 할 일
 
 1. 11-1 확인: 푸시한 뒤 CI 결과(특히 Windows). 푸시 시점은 사용자가 정한다.
-2. 11-2 라이선스 고지, 11-3 업데이터·정보 칸, 11-4 배포 워크플로·서명·공증(report.md 10절, 2026-10-21 승인). 11-4 전에 사용자가 Developer ID Application 인증서, App Store Connect API 키, 업데이트 서명 키를 준비한다.
+2. 11-3 업데이터·정보 칸, 11-4 배포 워크플로·서명·공증(report.md 10절, 2026-10-21 승인). 11-4 전에 사용자가 Developer ID Application 인증서, App Store Connect API 키, 업데이트 서명 키를 준비한다.
 3. 사용자 확인(위 "남은 일" 첫 항목)과 푸시. 사용자는 확인을 코드를 다 쓴 뒤로 미뤘으므로, 11번과의 순서는 사용자가 정한다.
 
 ## 개발 메모
@@ -136,7 +136,7 @@
 - Mullvad 계정 번호는 사용자가 직접 넣는다: `security add-generic-password -s pro.tb.nyabi.Tailgate -a mullvad-account -w`. 이 계정에는 지금 `divine condor` 기기가 등록되어 있다.
 - 키체인 항목을 다른 실행 파일이 만들었거나 다시 빌드한 디버그 실행 파일이 읽으면 macOS가 접근 허용 창을 띄운다. 창이 떠 있는 동안 앱은 `connecting`으로 기다리고, 거부하면 `failed`(`credentialStore`)로 막힌 채 남는다.
 - 디버그 로그: `RUST_LOG=info,tailgate_lib=debug npm run tauri dev`. 웹 인스펙터는 `TAILGATE_DEVTOOLS=1`(디버그 빌드에서만).
-- 검사: `cargo test`, `cargo clippy --all-targets`, `cargo fmt --check`(`src-tauri`), `npm test`, `npm run check`, `npm run build`. Svelte 경고는 `npm run check`가 아니라 `npm run build`에서만 나오는 것이 있으니 둘 다 본다.
+- 검사: `cargo test`, `cargo clippy --all-targets`, `cargo fmt --check`(`src-tauri`), `npm test`, `npm run check`, `npm run build`. 의존성을 바꾸면 `npm run notices`로 고지 파일을 다시 만든다(`cargo install --locked cargo-about --version 0.9.2 --features cli` 필요). Svelte 경고는 `npm run check`가 아니라 `npm run build`에서만 나오는 것이 있으니 둘 다 본다.
 - 클릭·입력이 필요한 화면 확인은 사용자가 개발 앱에서 직접 한다. 꼭 필요할 때만 커밋하지 않는 임시 자동 실행 코드(`// TEMP verification`)를 `App.svelte`에 넣고 확인 뒤 지운다. 창이 다른 창에 가려지면 WebKit이 타이머와 미디어를 멈추니 그동안 창을 앞에 두어야 한다.
 - 이미지 디스크 캐시는 `~/Library/Caches/pro.tb.nyabi.Tailgate/media/`. 디스크에서 응답한 요청은 디버그 로그에 `media <경로> from disk`로 남는다. 처음 상태로 보려면 앱을 끄고 이 폴더를 지운다.
 - 다운로드는 기본으로 `~/Downloads/Tailgate`에 저장된다. 설정 화면에서 폴더와 이름 규칙을 바꾸면 `settings.json`의 `downloads`에 남는다.
