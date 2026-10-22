@@ -10,6 +10,7 @@ mod search;
 pub mod secrets;
 pub mod settings;
 pub mod tunnel;
+mod update;
 
 use std::sync::Arc;
 
@@ -34,6 +35,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             commands::connection_status,
             commands::connection_details,
@@ -68,6 +70,12 @@ pub fn run() {
             commands::cache_status,
             commands::set_cache_limit,
             commands::clear_cache,
+            commands::update_settings,
+            commands::set_update_settings,
+            commands::check_for_update,
+            commands::install_update,
+            commands::restart,
+            commands::open_notices,
             commands::quit
         ])
         .on_window_event(|window, event| {
@@ -95,6 +103,7 @@ pub fn run() {
             app.manage(Arc::clone(&account));
             app.manage(Arc::clone(&api));
             app.manage(Arc::new(search::Searches::default()));
+            app.manage(Arc::new(update::Updates::default()));
             app.manage(Arc::new(download::Downloads::new(
                 network.http().clone(),
                 user_agent.clone(),

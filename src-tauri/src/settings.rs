@@ -25,6 +25,8 @@ pub struct SettingsFile {
     pub downloads: DownloadSettings,
     #[serde(default)]
     pub cache: CacheSettings,
+    #[serde(default)]
+    pub updates: UpdateSettings,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -60,6 +62,21 @@ pub struct DownloadSettings {
 pub struct CacheSettings {
     /// The most the image cache keeps on disk; `None` follows the app's default.
     pub limit_mb: Option<u32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct UpdateSettings {
+    /// Look for a new version once a run, when the connection first opens.
+    pub check_automatically: bool,
+}
+
+impl Default for UpdateSettings {
+    fn default() -> Self {
+        Self {
+            check_automatically: true,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize, Serialize)]
@@ -190,6 +207,14 @@ impl Settings {
 
     pub fn set_cache(&self, cache: CacheSettings) -> Result<(), SettingsError> {
         self.change_section(|file| file.cache = cache)
+    }
+
+    pub fn updates(&self) -> UpdateSettings {
+        self.section(|file| file.updates.clone())
+    }
+
+    pub fn set_updates(&self, updates: UpdateSettings) -> Result<(), SettingsError> {
+        self.change_section(|file| file.updates = updates)
     }
 
     /// The defaults while nothing is saved or the file cannot be loaded.
@@ -362,6 +387,10 @@ mod tests {
             limit_mb: Some(512),
         };
         settings.set_cache(cache.clone()).unwrap();
+        let updates = UpdateSettings {
+            check_automatically: false,
+        };
+        settings.set_updates(updates.clone()).unwrap();
         settings
             .set_connection(ConnectionSettings::new(ConnectionMode::Direct))
             .unwrap();
@@ -371,6 +400,7 @@ mod tests {
         assert_eq!(loaded.browse(), browse);
         assert_eq!(loaded.downloads(), downloads);
         assert_eq!(loaded.cache(), cache);
+        assert_eq!(loaded.updates(), updates);
         assert_eq!(
             loaded.connection().unwrap().unwrap().mode,
             ConnectionMode::Direct
@@ -409,5 +439,6 @@ mod tests {
         assert_eq!(connection, ConnectionSettings::new(ConnectionMode::Mullvad));
         assert_eq!(settings.general(), General::default());
         assert_eq!(settings.browse(), Browse::default());
+        assert!(settings.updates().check_automatically);
     }
 }

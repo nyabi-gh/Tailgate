@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, ipc::Channel, path::BaseDirectory};
 
 use crate::{
     account::{Account, AccountError, AccountState},
@@ -19,7 +19,8 @@ use crate::{
     network::{Connection, ConnectionDetails, Network, SettingsChangeError},
     relays::LocationChoice,
     search::{SearchError, SearchPage, Searches},
-    settings::{Browse, CacheSettings, ConnectionMode, General, Settings},
+    settings::{Browse, CacheSettings, ConnectionMode, General, Settings, UpdateSettings},
+    update::{Available, Progress, UpdateError, Updates},
 };
 
 #[tauri::command]
@@ -330,6 +331,77 @@ pub async fn set_cache_limit(
 pub async fn clear_cache(media: State<'_, Arc<Media>>) -> Result<CacheUsage, ClearError> {
     media.disk().clear().await?;
     Ok(media.disk().status().await)
+}
+
+#[tauri::command]
+pub fn update_settings(settings: State<'_, Arc<Settings>>) -> UpdateSettings {
+    settings.updates()
+}
+
+#[tauri::command]
+pub fn set_update_settings(
+    settings: State<'_, Arc<Settings>>,
+    updates: UpdateSettings,
+) -> Result<(), SettingsChangeError> {
+    settings.set_updates(updates).map_err(|error| {
+        tracing::error!("{error}");
+        SettingsChangeError::Settings
+    })
+}
+
+#[tauri::command]
+pub async fn check_for_update(
+    app: AppHandle,
+    network: State<'_, Arc<Network>>,
+    updates: State<'_, Arc<Updates>>,
+) -> Result<Option<Available>, UpdateError> {
+    updates.check(&app, &network.proxy_url()).await
+}
+
+#[tauri::command]
+pub async fn install_update(
+    updates: State<'_, Arc<Updates>>,
+    progress: Channel<Progress>,
+) -> Result<(), UpdateError> {
+    updates
+        .install(|step| {
+            if let Err(error) = progress.send(step) {
+                tracing::warn!("could not send update progress to the UI: {error}");
+            }
+        })
+        .await
+}
+
+/// Into the version an update has just installed.
+#[tauri::command]
+pub fn restart(app: AppHandle) {
+    app.restart();
+}
+
+#[derive(Debug, Serialize, thiserror::Error)]
+#[serde(tag = "code", rename_all = "camelCase")]
+pub enum OpenNoticesError {
+    #[error("the third-party notices could not be opened")]
+    Unavailable,
+}
+
+/// In the default browser, from the copy shipped in the app's resources.
+#[tauri::command]
+pub fn open_notices(app: AppHandle) -> Result<(), OpenNoticesError> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = app
+        .path()
+        .resolve("THIRD-PARTY-NOTICES.html", BaseDirectory::Resource)
+        .map_err(|error| {
+            tracing::warn!("could not find the third-party notices: {error}");
+            OpenNoticesError::Unavailable
+        })?;
+    app.opener()
+        .open_path(path.to_string_lossy(), None::<&str>)
+        .map_err(|error| {
+            tracing::warn!("could not open {}: {error}", path.display());
+            OpenNoticesError::Unavailable
+        })
 }
 
 #[tauri::command]
