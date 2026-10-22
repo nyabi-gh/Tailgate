@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use serde::Deserialize;
+
 use super::{
     Api, ApiError, Credentials,
     models::{Favorited, Post, RawPostEnvelope, RawPosts, RawUser, TagSuggestion, User, Voted},
@@ -73,6 +75,21 @@ impl Api {
         Ok(raw.posts.into_iter().map(Post::from).collect())
     }
 
+    async fn popular(&self, popular: &Popular) -> Result<Vec<Post>, ApiError> {
+        let raw: RawPosts = self
+            .client
+            .get(
+                "popular.json",
+                &[
+                    ("date", &popular.date),
+                    ("scale", popular.scale.as_str()),
+                    ("time_zone", &popular.time_zone),
+                ],
+            )
+            .await?;
+        Ok(raw.posts.into_iter().map(Post::from).collect())
+    }
+
     async fn posts(&self, tags: &str, page: Option<&str>) -> Result<Vec<Post>, ApiError> {
         let limit = PAGE_SIZE.to_string();
         let mut query = vec![("tags", tags), ("limit", limit.as_str())];
@@ -84,13 +101,51 @@ impl Api {
     }
 }
 
-/// One tag search, or the user's favorites, read page by page. Keeps the ids it has returned so
-/// a post that moves to a later page while paging by number is not shown twice.
+/// One period of e621's popular posts: the highest scored posts made in it.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Popular {
+    /// `YYYY-MM-DD`, any day of the period.
+    pub date: String,
+    pub scale: Scale,
+    /// The zone `date` is read in; e621 otherwise reads it in the account's zone, by default
+    /// US Eastern.
+    pub time_zone: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Scale {
+    Day,
+    /// Monday to Sunday.
+    Week,
+    Month,
+}
+
+impl Scale {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Day => "day",
+            Self::Week => "week",
+            Self::Month => "month",
+        }
+    }
+}
+
+/// One tag search, the user's favorites, or a period's popular posts, read page by page. Keeps
+/// the ids it has returned so a post that moves to a later page while paging by number is not
+/// shown twice.
 pub struct PostSearch {
-    /// `None` for the favorites.
-    tags: Option<String>,
+    source: Source,
     next: Option<Page>,
     seen: HashSet<u64>,
+}
+
+enum Source {
+    Tags(String),
+    Favorites,
+    /// A single page: e621 offers no more.
+    Popular(Popular),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -114,7 +169,7 @@ impl PostSearch {
             } else {
                 Page::First
             }),
-            tags: Some(tags),
+            source: Source::Tags(tags),
             seen: HashSet::new(),
         }
     }
@@ -122,8 +177,16 @@ impl PostSearch {
     /// Favorites only page by number, in the order they were added.
     pub fn favorites() -> Self {
         Self {
-            tags: None,
+            source: Source::Favorites,
             next: Some(Page::Number(1)),
+            seen: HashSet::new(),
+        }
+    }
+
+    pub fn popular(popular: Popular) -> Self {
+        Self {
+            source: Source::Popular(popular),
+            next: Some(Page::First),
             seen: HashSet::new(),
         }
     }
@@ -143,10 +206,11 @@ impl PostSearch {
         let Some(page) = self.next else {
             return Ok(Vec::new());
         };
-        let posts = match (&self.tags, page) {
-            (None, Page::Number(number)) => api.favorites(number).await?,
-            (None, _) => unreachable!("favorites page by number"),
-            (Some(tags), page) => {
+        let posts = match (&self.source, page) {
+            (Source::Favorites, Page::Number(number)) => api.favorites(number).await?,
+            (Source::Favorites, _) => unreachable!("favorites page by number"),
+            (Source::Popular(popular), _) => api.popular(popular).await?,
+            (Source::Tags(tags), page) => {
                 let param = match page {
                     Page::First => None,
                     Page::Before(id) => Some(format!("b{id}")),
@@ -155,7 +219,10 @@ impl PostSearch {
                 api.posts(tags, param.as_deref()).await?
             }
         };
-        self.next = following(page, &posts);
+        self.next = match self.source {
+            Source::Popular(_) => None,
+            Source::Tags(_) | Source::Favorites => following(page, &posts),
+        };
         Ok(posts
             .into_iter()
             .filter(|post| self.seen.insert(post.id))

@@ -15,7 +15,7 @@ use tokio::sync::watch;
 use crate::network::UserAgent;
 use client::Client;
 pub use client::Credentials;
-pub use endpoints::{PAGE_SIZE, PostSearch};
+pub use endpoints::{PAGE_SIZE, Popular, PostSearch, Scale};
 
 const BASE: &str = "https://e621.net/";
 
@@ -271,6 +271,28 @@ mod tests {
         assert_eq!(
             requests[1].target,
             "/posts.json?tags=wolf+Order%3Ascore&limit=100&page=2"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn popular_posts_are_one_page_for_the_asked_period() {
+        let (api, mut received) = fake_api(vec![ok(&posts((1..=75).rev()))]).await;
+        // As the UI sends it.
+        let popular: Popular = serde_json::from_value(json!({
+            "date": "2026-10-22",
+            "scale": "week",
+            "timeZone": "Asia/Seoul",
+        }))
+        .unwrap();
+        let mut search = PostSearch::popular(popular);
+        assert_eq!(search.next_page(&api).await.unwrap().len(), 75);
+        assert!(search.is_done());
+        assert!(search.next_page(&api).await.unwrap().is_empty());
+        let requests = drain(&mut received);
+        assert_eq!(requests.len(), 1);
+        assert_eq!(
+            requests[0].target,
+            "/popular.json?date=2026-10-22&scale=week&time_zone=Asia%2FSeoul"
         );
     }
 

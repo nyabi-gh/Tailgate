@@ -8,7 +8,7 @@ use tauri::{AppHandle, Emitter, Manager, State, ipc::Channel, path::BaseDirector
 use crate::{
     account::{Account, AccountError, AccountState},
     api::{
-        Api, ApiError,
+        Api, ApiError, Popular,
         models::{Favorited, TagSuggestion, Voted},
     },
     download::{
@@ -156,6 +156,11 @@ pub async fn autocomplete(
 #[tauri::command]
 pub fn search_start_favorites(searches: State<'_, Arc<Searches>>) -> u64 {
     searches.start_favorites()
+}
+
+#[tauri::command]
+pub fn search_start_popular(searches: State<'_, Arc<Searches>>, popular: Popular) -> u64 {
+    searches.start_popular(popular)
 }
 
 #[tauri::command]

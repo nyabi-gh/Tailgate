@@ -14,7 +14,7 @@ use tokio::{sync::Mutex, time::Instant};
 
 use crate::{
     api::{
-        Api, ApiError, Credentials, PostSearch,
+        Api, ApiError, Credentials, Popular, PostSearch,
         models::{Post, TagCategory, Tags},
     },
     blacklist::Blacklist,
@@ -64,6 +64,7 @@ pub enum ClosedSearch {
 enum Screen {
     Search,
     Favorites,
+    Popular,
 }
 
 struct OpenSearch {
@@ -123,6 +124,15 @@ impl Searches {
             screen: Screen::Favorites,
             tags: Vec::new(),
             pages: Mutex::new(PostSearch::favorites()),
+            loaded: std::sync::Mutex::default(),
+        })
+    }
+
+    pub fn start_popular(&self, popular: Popular) -> u64 {
+        self.open(OpenSearch {
+            screen: Screen::Popular,
+            tags: Vec::new(),
+            pages: Mutex::new(PostSearch::popular(popular)),
             loaded: std::sync::Mutex::default(),
         })
     }

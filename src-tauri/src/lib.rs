@@ -55,6 +55,7 @@ pub fn run() {
             commands::search_close,
             commands::autocomplete,
             commands::search_start_favorites,
+            commands::search_start_popular,
             commands::favorite,
             commands::vote,
             commands::download,
