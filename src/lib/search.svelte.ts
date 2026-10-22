@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { BlacklistMarks } from "./blacklistMarks";
 import { canLoadRemote } from "./connection.svelte";
+import { dateParam, today, type Day, type Scale } from "./popular";
 import { apiErrorCode, type ApiErrorCode, type Post, type TagCategory } from "./posts";
 
 /** Mirrors `SearchPage` in src-tauri/src/search.rs. */
@@ -27,7 +28,10 @@ export class PostList {
   #id: number | null = null;
   /** Bumped by every start and clear, so a reply for an older one is dropped. */
   #generation = 0;
-  /** What was asked for: the tags for a search, `""` for the favorites; `null` before any. */
+  /**
+   * What was asked for: the tags for a search, `""` for the favorites, the period for the popular
+   * posts; `null` before any.
+   */
   query = $state<string | null>(null);
   // Replaced, never mutated: a deep proxy over thousands of posts would only cost.
   #posts = $state.raw<Post[]>([]);
@@ -127,6 +131,20 @@ export class PostList {
 
 export const tagSearch = new PostList();
 export const favorites = new PostList();
+export const popular = new PostList();
+
+/** The popular period on screen, kept while other screens are open. */
+export const popularPeriod = $state<{ day: Day; scale: Scale }>({ day: today(), scale: "day" });
+
+/** Read in the computer's time zone, so "today" is the user's today rather than e621's. */
+export function startPopular() {
+  const { day, scale } = popularPeriod;
+  const date = dateParam(day);
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return popular.start(`${scale} ${date}`, () =>
+    invoke<number>("search_start_popular", { popular: { date, scale, timeZone } }),
+  );
+}
 
 export function startSearch(tags: string) {
   return tagSearch.start(tags, () => invoke<number>("search_start", { tags }));
@@ -141,6 +159,7 @@ export async function watchBlacklist() {
   await listen<BlacklistChange>("blacklist-changed", ({ payload }) => {
     tagSearch.applyBlacklist(payload);
     favorites.applyBlacklist(payload);
+    popular.applyBlacklist(payload);
   });
 }
 
@@ -148,6 +167,7 @@ export async function watchBlacklist() {
 export function updatePost(id: number, change: (post: Post) => Post) {
   tagSearch.update(id, change);
   favorites.update(id, change);
+  popular.update(id, change);
 }
 
 let categories = $state<Record<string, TagCategory>>({});

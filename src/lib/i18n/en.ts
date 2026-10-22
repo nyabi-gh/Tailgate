@@ -200,6 +200,14 @@ const en = {
     alreadySaved: (name: string) => `${name} is already saved`,
     reveal: isMac ? "Show in Finder" : "Show in Explorer",
   },
+  popular: {
+    scale: "Period",
+    scales: { day: "Day", week: "Week", month: "Month" },
+    previous: "Previous",
+    next: "Next",
+    today: "Today",
+    empty: "No posts were made in this period.",
+  },
   favorites: {
     signedOut: "Sign in to see your favorites.",
     empty: "You have no favorites yet.",

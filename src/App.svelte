@@ -2,6 +2,7 @@
   import { ZoomIn } from "@lucide/svelte";
   import { tick, untrack } from "svelte";
   import Grid from "./components/Grid.svelte";
+  import PopularBar from "./components/PopularBar.svelte";
   import Settings from "./components/Settings.svelte";
   import SignInSheet from "./components/SignInSheet.svelte";
   import Sidebar from "./components/Sidebar.svelte";
@@ -16,7 +17,15 @@
   import { m } from "./lib/i18n/index.svelte";
   import { CELL_WIDTH } from "./lib/layout";
   import { isMac } from "./lib/platform";
-  import { favorites, startFavorites, startSearch, tagSearch, type PostList } from "./lib/search.svelte";
+  import {
+    favorites,
+    popular,
+    startFavorites,
+    startPopular,
+    startSearch,
+    tagSearch,
+    type PostList,
+  } from "./lib/search.svelte";
   import { cellWidth, rememberSearch, setCellWidth } from "./lib/settings.svelte";
   import type { Post } from "./lib/posts";
   import { checkOnceAutomatically } from "./lib/updates.svelte";
@@ -28,6 +37,7 @@
   let tagInput: TagInput | undefined = $state();
   let searchGrid: Grid | undefined = $state();
   let favoritesGrid: Grid | undefined = $state();
+  let popularGrid: Grid | undefined = $state();
   /** The grid the viewer was opened from, to close back into. */
   let openedFrom: Grid | undefined;
   let signInSheet: SignInSheet;
@@ -92,9 +102,11 @@
     startSearch(query);
   }
 
-  const activeGrid = $derived(view === "favorites" ? favoritesGrid : searchGrid);
+  const activeGrid = $derived(view === "favorites" ? favoritesGrid : view === "popular" ? popularGrid : searchGrid);
   const showsGrid = $derived(
-    (view === "search" && tagSearch.query !== null) || (view === "favorites" && favorites.query !== null),
+    (view === "search" && tagSearch.query !== null) ||
+      (view === "favorites" && favorites.query !== null) ||
+      (view === "popular" && popular.query !== null),
   );
 
   // Favorites and votes in the results belong to whoever is signed in, so a change of account
@@ -125,6 +137,11 @@
     if (canLoadRemote()) untrack(checkOnceAutomatically);
   });
 
+  // The popular posts load the first time their screen opens.
+  $effect(() => {
+    if (view === "popular" && untrack(() => popular.query) === null) startPopular();
+  });
+
   // The favorites load the first time their screen opens while signed in.
   $effect(() => {
     if (view === "favorites" && signedInAs !== null && untrack(() => favorites.query) === null) startFavorites();
@@ -140,6 +157,8 @@
     <header class="flex min-h-11 shrink-0 items-center gap-2 px-3 py-1" data-tauri-drag-region>
       {#if view === "favorites" || view === "settings"}
         <h1 class="px-1 text-base font-strong">{m().nav[view]}</h1>
+      {:else if view === "popular"}
+        <PopularBar />
       {:else}
         <TagInput bind:this={tagInput} bind:tags onsubmit={run} />
         <SortMenu {tags} onchange={run} />
@@ -194,6 +213,18 @@
             {transitionId}
             empty={m().favorites.empty}
             onopen={(post) => open(favorites, favoritesGrid, post)}
+          />
+        {/if}
+      </div>
+      <div class={["absolute inset-0", view !== "popular" && "invisible"]}>
+        {#if popular.query !== null}
+          <Grid
+            bind:this={popularGrid}
+            list={popular}
+            bind:cellWidth={cellWidth, setCellWidth}
+            {transitionId}
+            empty={m().popular.empty}
+            onopen={(post) => open(popular, popularGrid, post)}
           />
         {/if}
       </div>

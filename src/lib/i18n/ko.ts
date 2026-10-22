@@ -201,6 +201,14 @@ const ko: Messages = {
     alreadySaved: (name) => `${name}은(는) 이미 저장되어 있습니다`,
     reveal: isMac ? "Finder에서 보기" : "탐색기에서 보기",
   },
+  popular: {
+    scale: "기간",
+    scales: { day: "일", week: "주", month: "월" },
+    previous: "이전",
+    next: "다음",
+    today: "오늘",
+    empty: "이 기간에 올라온 게시물이 없습니다.",
+  },
   favorites: {
     signedOut: "로그인하면 내 즐겨찾기를 볼 수 있습니다.",
     empty: "아직 즐겨찾기가 없습니다.",
