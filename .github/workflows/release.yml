@@ -1,6 +1,7 @@
 name: Release
 
-# A version tag builds a signed and notarized macOS release as a draft (docs/report.md §10).
+# A version tag builds the macOS release as a draft (docs/report.md §10). The app is ad-hoc
+# signed and not notarized; the README tells users how to open it.
 # The annotated tag's message becomes the release notes, also shown by the in-app updater.
 on:
   push:
@@ -59,20 +60,8 @@ jobs:
 
       - run: npm ci
 
-      - name: Notarization key
+      - name: Build
         env:
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-        run: printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
-
-      # Tauri imports the certificate into a temporary keychain, signs, and notarizes and
-      # staples the app.
-      - name: Build, sign and notarize
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build --bundles app,dmg --config '{"bundle":{"createUpdaterArtifacts":true}}'
@@ -87,28 +76,16 @@ jobs:
           cp "$bundle/macos/Tailgate.app.tar.gz" "release/Tailgate_${VERSION}_aarch64.app.tar.gz"
           cp "$bundle/macos/Tailgate.app.tar.gz.sig" "release/Tailgate_${VERSION}_aarch64.app.tar.gz.sig"
 
-      # Tauri signs the disk image but notarizes only the app inside it.
-      - name: Notarize the disk image
-        env:
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          dmg="release/Tailgate_${VERSION}_aarch64.dmg"
-          xcrun notarytool submit "$dmg" --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
-          xcrun stapler staple "$dmg"
-
-      - name: Check the signatures
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
+      # Without signingIdentity "-" only the binary carries the linker's signature and the
+      # bundle is left unsealed, which codesign rejects.
+      - name: Check the signature
         run: |
           app=src-tauri/target/release/bundle/macos/Tailgate.app
-          dmg="release/Tailgate_${VERSION}_aarch64.dmg"
           codesign --verify --deep --strict --verbose=2 "$app"
-          spctl --assess --type execute --verbose=2 "$app"
-          xcrun stapler validate "$app"
-          spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg"
-          xcrun stapler validate "$dmg"
+          details=$(codesign --display --verbose=2 "$app" 2>&1)
+          echo "$details"
+          grep -qx 'Identifier=pro.tb.nyabi.Tailgate' <<< "$details"
+          grep -qx 'Signature=adhoc' <<< "$details"
 
       - name: Update manifest
         env:
