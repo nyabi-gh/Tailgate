@@ -26,6 +26,7 @@ type BlacklistChange = {
  */
 export class PostList {
   #id: number | null = null;
+  #open: (() => Promise<number>) | null = null;
   /** Bumped by every start and clear, so a reply for an older one is dropped. */
   #generation = 0;
   /**
@@ -63,7 +64,15 @@ export class PostList {
   async start(query: string, open: () => Promise<number>) {
     const mine = ++this.#generation;
     this.#reset(query);
-    const started = await open();
+    this.#open = open;
+    let started: number;
+    try {
+      started = await open();
+    } catch (cause) {
+      // Opening asks e621 itself for some lists (a pool's posts).
+      if (mine === this.#generation) this.error = apiErrorCode(cause);
+      return;
+    }
     if (mine !== this.#generation) return;
     this.#id = started;
     await this.loadMore();
@@ -93,6 +102,10 @@ export class PostList {
   }
 
   async retry() {
+    if (this.#id === null && this.#open !== null && this.query !== null) {
+      await this.start(this.query, this.#open);
+      return;
+    }
     this.error = null;
     await this.loadMore();
   }
