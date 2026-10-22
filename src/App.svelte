@@ -285,7 +285,7 @@
         {/if}
       </div>
       <div class={["absolute inset-0", (view !== "pools" || pool !== null) && "invisible"]}>
-        <PoolList onopen={(summary) => openPool(summary.id)} />
+        <PoolList onopen={openPool} />
       </div>
       <div class={["absolute inset-0", (view !== "pools" || pool === null) && "invisible"]}>
         {#if pool !== null && poolPosts.query !== null}

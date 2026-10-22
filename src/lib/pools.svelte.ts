@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { canLoadRemote } from "./connection.svelte";
-import { apiErrorCode, type ApiErrorCode } from "./posts";
+import { PagedList } from "./lists.svelte";
+import { apiErrorCode } from "./posts";
 import { poolPosts } from "./search.svelte";
 
 /** Mirrors `PoolCategory` in src-tauri/src/api/models.rs. */
@@ -23,57 +23,14 @@ type PoolPage = { pools: PoolSummary[]; done: boolean };
 /** Mirrors `OpenedPool` in src-tauri/src/search.rs. */
 type OpenedPool = { search: number; pool: Pool; postCount: number };
 
-/** The pool list, read page by page like the grids. */
-class PoolIndex {
-  query = $state<PoolQuery>({ name: "", category: null, order: "updated" });
-  pools = $state.raw<PoolSummary[]>([]);
-  started = $state(false);
-  done = $state(false);
-  loading = $state(false);
-  error = $state<ApiErrorCode | null>(null);
-  #page = 0;
-  /** Bumped by every new query, so a reply for an older one is dropped. */
-  #generation = 0;
-
-  search(change: Partial<PoolQuery>) {
-    this.query = { ...this.query, ...change };
-    this.#generation += 1;
-    this.#page = 0;
-    this.pools = [];
-    this.started = true;
-    this.done = false;
-    this.loading = false;
-    this.error = null;
-    this.loadMore();
-  }
-
-  /** Waits like the grids for a route, a page in flight, or a retry after an error. */
-  async loadMore() {
-    if (!this.started || this.loading || this.done || this.error !== null || !canLoadRemote()) return;
-    const mine = this.#generation;
-    const page = this.#page + 1;
-    this.loading = true;
-    try {
-      const reply = await invoke<PoolPage>("pools_page", { query: this.query, page });
-      if (mine !== this.#generation) return;
-      this.#page = page;
-      this.pools = [...this.pools, ...reply.pools];
-      this.done = reply.done;
-    } catch (cause) {
-      if (mine !== this.#generation) return;
-      this.error = apiErrorCode(cause);
-    } finally {
-      if (mine === this.#generation) this.loading = false;
-    }
-  }
-
-  retry() {
-    this.error = null;
-    this.loadMore();
-  }
-}
-
-export const poolIndex = new PoolIndex();
+/** The pool list for the current query. */
+export const poolIndex = new PagedList<PoolQuery, PoolSummary>(
+  { name: "", category: null, order: "updated" },
+  async (query, page) => {
+    const reply = await invoke<PoolPage>("pools_page", { query, page });
+    return { items: reply.pools, done: reply.done };
+  },
+);
 
 /** The pool being read, or `null` while the list shows; its posts are in `poolPosts`. */
 let opened = $state<{ id: number; pool: Pool | null; postCount: number | null } | null>(null);
