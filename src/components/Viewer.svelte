@@ -7,7 +7,7 @@
   import InfoPanel from "./InfoPanel.svelte";
   import MediaStage from "./MediaStage.svelte";
 
-  let { onclose }: { onclose: () => void } = $props();
+  let { onclose, onpool }: { onclose: () => void; onpool: (id: number) => void } = $props();
 
   let stage: MediaStage | undefined = $state();
 
@@ -53,6 +53,14 @@
 
       <div class="absolute inset-x-0 top-0 h-12" data-tauri-drag-region></div>
 
+      {#if viewer.total !== null}
+        <span
+          class="pointer-events-none absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-panel/80 px-3 py-1 text-sm font-medium tabular-nums shadow-panel"
+        >
+          {m().viewer.position(viewer.index + 1, viewer.total)}
+        </span>
+      {/if}
+
       <div class="absolute top-3 right-3 flex gap-2">
         <button
           class={[control, "opacity-60"]}
@@ -96,6 +104,7 @@
           {post}
           originalStatus={stage?.originalStatus() ?? null}
           onoriginal={() => stage?.loadOriginal()}
+          {onpool}
         />
       </aside>
     {/if}

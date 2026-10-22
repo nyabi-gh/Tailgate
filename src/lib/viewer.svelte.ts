@@ -39,6 +39,10 @@ export const viewer = {
   get posts() {
     return posts;
   },
+  /** The list's size when known ahead, for showing where in it the viewer is. */
+  get total() {
+    return list?.total ?? null;
+  },
 };
 
 export function openPost(from: PostList, id: number) {

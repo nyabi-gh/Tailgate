@@ -39,6 +39,8 @@ export class PostList {
   #marks = new BlacklistMarks();
   #blacklisted = $state.raw(this.#marks.ids);
   revealed = $state(false);
+  /** How many posts the list has in all, when known ahead (a pool's); `null` otherwise. */
+  total = $state<number | null>(null);
   done = $state(false);
   loading = $state(false);
   error = $state<ApiErrorCode | null>(null);
@@ -136,6 +138,7 @@ export class PostList {
     this.#marks = new BlacklistMarks();
     this.#blacklisted = this.#marks.ids;
     this.revealed = false;
+    this.total = null;
     this.done = false;
     this.error = null;
     this.loading = false;
@@ -145,6 +148,7 @@ export class PostList {
 export const tagSearch = new PostList();
 export const favorites = new PostList();
 export const popular = new PostList();
+export const poolPosts = new PostList();
 
 /** The popular period on screen, kept while other screens are open. */
 export const popularPeriod = $state<{ day: Day; scale: Scale }>({ day: today(), scale: "day" });
@@ -173,6 +177,7 @@ export async function watchBlacklist() {
     tagSearch.applyBlacklist(payload);
     favorites.applyBlacklist(payload);
     popular.applyBlacklist(payload);
+    poolPosts.applyBlacklist(payload);
   });
 }
 
@@ -181,6 +186,7 @@ export function updatePost(id: number, change: (post: Post) => Post) {
   tagSearch.update(id, change);
   favorites.update(id, change);
   popular.update(id, change);
+  poolPosts.update(id, change);
 }
 
 let categories = $state<Record<string, TagCategory>>({});

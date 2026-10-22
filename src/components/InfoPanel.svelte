@@ -4,13 +4,24 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { currentLocale, m } from "../lib/i18n/index.svelte";
   import type { Post, TagCategory } from "../lib/posts";
+  import { learnPoolNames, poolName } from "../lib/pools.svelte";
   import { categoryTone } from "../lib/tags";
 
   let {
     post,
     originalStatus,
     onoriginal,
-  }: { post: Post; originalStatus: "idle" | "loading" | "failed" | null; onoriginal: () => void } = $props();
+    onpool,
+  }: {
+    post: Post;
+    originalStatus: "idle" | "loading" | "failed" | null;
+    onoriginal: () => void;
+    onpool: (id: number) => void;
+  } = $props();
+
+  $effect(() => {
+    learnPoolNames(post.pools);
+  });
 
   const order: TagCategory[] = [
     "artist",
@@ -134,6 +145,21 @@
         {m().viewer.original}
       {/if}
     </button>
+  {/if}
+
+  {#if post.pools.length > 0}
+    <section class="flex flex-col gap-1.5">
+      <h3 class="text-xs text-faint">{m().viewer.pools}</h3>
+      <ul class="flex flex-col gap-1">
+        {#each post.pools as id (id)}
+          <li class="min-w-0">
+            <button class="block w-full truncate text-left text-focus hover:underline" onclick={() => onpool(id)}>
+              {poolName(id) ?? m().viewer.pool(id)}
+            </button>
+          </li>
+        {/each}
+      </ul>
+    </section>
   {/if}
 
   {#if post.sources.length > 0}

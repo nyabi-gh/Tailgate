@@ -1,7 +1,10 @@
 <script lang="ts">
-  import { ZoomIn } from "@lucide/svelte";
+  import { BookOpen, ChevronLeft, ExternalLink, ZoomIn } from "@lucide/svelte";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { tick, untrack } from "svelte";
   import Grid from "./components/Grid.svelte";
+  import PoolList from "./components/PoolList.svelte";
+  import PoolsBar from "./components/PoolsBar.svelte";
   import PopularBar from "./components/PopularBar.svelte";
   import Settings from "./components/Settings.svelte";
   import SignInSheet from "./components/SignInSheet.svelte";
@@ -19,6 +22,7 @@
   import { isMac } from "./lib/platform";
   import {
     favorites,
+    poolPosts,
     popular,
     startFavorites,
     startPopular,
@@ -28,6 +32,7 @@
   } from "./lib/search.svelte";
   import { cellWidth, rememberSearch, setCellWidth } from "./lib/settings.svelte";
   import type { Post } from "./lib/posts";
+  import { closePool, openedPool, openPool, poolIndex } from "./lib/pools.svelte";
   import { checkOnceAutomatically } from "./lib/updates.svelte";
   import { closeViewer, openPost, viewer } from "./lib/viewer.svelte";
   import type { View } from "./lib/views";
@@ -38,6 +43,7 @@
   let searchGrid: Grid | undefined = $state();
   let favoritesGrid: Grid | undefined = $state();
   let popularGrid: Grid | undefined = $state();
+  let poolGrid: Grid | undefined = $state();
   /** The grid the viewer was opened from, to close back into. */
   let openedFrom: Grid | undefined;
   let signInSheet: SignInSheet;
@@ -102,12 +108,23 @@
     startSearch(query);
   }
 
-  const activeGrid = $derived(view === "favorites" ? favoritesGrid : view === "popular" ? popularGrid : searchGrid);
+  const activeGrid = $derived(
+    view === "favorites" ? favoritesGrid : view === "popular" ? popularGrid : view === "pools" ? poolGrid : searchGrid,
+  );
+  const pool = $derived(openedPool());
   const showsGrid = $derived(
     (view === "search" && tagSearch.query !== null) ||
       (view === "favorites" && favorites.query !== null) ||
-      (view === "popular" && popular.query !== null),
+      (view === "popular" && popular.query !== null) ||
+      (view === "pools" && pool !== null),
   );
+
+  /** From a post's pool in the viewer: the pool screen opens on it. */
+  async function showPool(id: number) {
+    await close();
+    view = "pools";
+    openPool(id);
+  }
 
   // Favorites and votes in the results belong to whoever is signed in, so a change of account
   // reloads the search and the favorites.
@@ -142,6 +159,11 @@
     if (view === "popular" && untrack(() => popular.query) === null) startPopular();
   });
 
+  // The pool list loads the first time its screen opens.
+  $effect(() => {
+    if (view === "pools" && !untrack(() => poolIndex.started)) poolIndex.search({});
+  });
+
   // The favorites load the first time their screen opens while signed in.
   $effect(() => {
     if (view === "favorites" && signedInAs !== null && untrack(() => favorites.query) === null) startFavorites();
@@ -159,6 +181,40 @@
         <h1 class="px-1 text-base font-strong">{m().nav[view]}</h1>
       {:else if view === "popular"}
         <PopularBar />
+      {:else if view === "pools" && pool !== null}
+        <button
+          class="flex h-8 shrink-0 items-center gap-0.5 rounded-md pr-2.5 pl-1.5 text-ink/80 transition-colors hover:bg-hover"
+          onclick={closePool}
+        >
+          <ChevronLeft size={16} strokeWidth={2} />{m().pools.back}
+        </button>
+        <div class="flex min-w-0 items-baseline gap-2">
+          <h1 class="truncate text-base font-strong">{pool.pool?.name ?? "…"}</h1>
+          {#if pool.pool && pool.postCount !== null}
+            <span class="shrink-0 text-dim">
+              {m().pools.category[pool.pool.category]} · {m().pools.posts(pool.postCount)}
+            </span>
+          {/if}
+        </div>
+        <button
+          class="ml-3 flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 font-medium text-ink/80 transition-colors hover:bg-hover disabled:opacity-50"
+          disabled={poolPosts.posts.length === 0}
+          onclick={() => {
+            const first = poolPosts.posts[0];
+            if (first) open(poolPosts, poolGrid, first);
+          }}
+        >
+          <BookOpen size={15} strokeWidth={1.75} />{m().pools.read}
+        </button>
+        <button
+          class="flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-ink/80 transition-colors hover:bg-hover"
+          onclick={() =>
+            openUrl(`https://e621.net/pools/${pool.id}`).catch((cause) => console.error("could not open the pool page", cause))}
+        >
+          <ExternalLink size={15} strokeWidth={1.75} />{m().pools.onE621}
+        </button>
+      {:else if view === "pools"}
+        <PoolsBar />
       {:else}
         <TagInput bind:this={tagInput} bind:tags onsubmit={run} />
         <SortMenu {tags} onchange={run} />
@@ -228,6 +284,21 @@
           />
         {/if}
       </div>
+      <div class={["absolute inset-0", (view !== "pools" || pool !== null) && "invisible"]}>
+        <PoolList onopen={(summary) => openPool(summary.id)} />
+      </div>
+      <div class={["absolute inset-0", (view !== "pools" || pool === null) && "invisible"]}>
+        {#if pool !== null && poolPosts.query !== null}
+          <Grid
+            bind:this={poolGrid}
+            list={poolPosts}
+            bind:cellWidth={cellWidth, setCellWidth}
+            {transitionId}
+            empty={m().pools.emptyPool}
+            onopen={(post) => open(poolPosts, poolGrid, post)}
+          />
+        {/if}
+      </div>
       {#if view === "settings"}
         <div class="absolute inset-0 overflow-y-auto"><Settings onsignin={() => signInSheet.open()} /></div>
       {/if}
@@ -236,7 +307,7 @@
 </div>
 
 {#if viewer.open}
-  <Viewer onclose={close} />
+  <Viewer onclose={close} onpool={showPool} />
 {/if}
 
 <SignInSheet bind:this={signInSheet} />
