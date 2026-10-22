@@ -8,7 +8,8 @@
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "tauri": "tauri",
-    "test": "vitest run"
+    "test": "vitest run",
+    "notices": "node scripts/notices.mjs"
   },
   "dependencies": {
     "@lucide/svelte": "1.59.0",
