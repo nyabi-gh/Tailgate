@@ -37,7 +37,8 @@
 | 뷰어 | `Viewer`, `MediaStage`, `InfoPanel`, `viewer.svelte.ts`, `zoom.ts`, `media.ts` | 썸네일에서 커지며 열리고 그 자리로 닫힘(View Transitions), 이미지 샘플 → 확대하거나 요청하면 원본, GIF는 원본, 동영상 720p 우선·반복·음소거 시작, 휠·핀치 확대·끌기·더블클릭 맞춤/1:1, 이전·다음(끝 5개 전에 다음 페이지), 정보 패널(점수·즐겨찾기·등급·파일·업로더·출처·카테고리별 태그), ←/→·Esc·I·0 |
 | 즐겨찾기·투표·다운로드 | `api/`, `search.rs`, `download.rs`, `download/name.rs`, `downloadSettings.ts`, `actions.svelte.ts`, `search.svelte.ts`, `InfoPanel`, `Toasts`, `App` | 뷰어 패널의 ♥·▲·▼·↓와 F·↑·↓·D(누르면 바로 반영, e621 응답으로 맞추고 실패하면 되돌림), 로그인 안 했으면 로그인 시트, 다운로드는 설정의 폴더(기본 `~/Downloads/Tailgate`)에 이름 규칙(기본 `{id}_{artist}`, report.md 3절)대로 `.part`를 거쳐 저장·진행률·"Finder에서 보기", 사이드바 즐겨찾기 화면(즐겨찾기한 순서, 블랙리스트 적용). 검색과 즐겨찾기는 화면마다 따로 열려 결과와 스크롤을 기억 |
 | 버전·CI | `src-tauri/Cargo.toml`, `.github/workflows/ci.yml` | 버전은 `Cargo.toml` 한곳(`tauri.conf.json`·`package.json`에서 뺌). main 푸시·PR마다 macOS·Windows에서 검사 6개, Rust 1.98.1 고정, 액션은 SHA 고정(11-1). 아직 푸시하지 않아 CI는 돌아 본 적 없음 |
-| 1단계 11-3~11-4 | | 시작 전(업데이터·정보 칸, 배포 워크플로·서명·공증) |
+| 업데이터·정보 칸 | `update.rs`, `commands.rs`, `settings.rs`, `updates.svelte.ts`, `UpdateSheet.svelte`, `Settings.svelte` | `tauri-plugin-updater`(시스템 프록시 끔)를 Rust 명령으로만 씀. 확인·받기는 앱 SOCKS를 거침. 연결이 처음 열리면 실행마다 한 번 자동 확인(설정 `updates.checkAutomatically`, 기본 켬), 새 버전이면 시트(버전·릴리스 노트·진행률·[다시 시작]). 설정 맨 아래 정보 칸: 버전·[업데이트 확인]·자동 확인·오픈 소스 라이선스(번들 리소스를 기본 브라우저로)·소스 코드 링크. `pubkey`는 사용자가 만든 키(ID `8DFE5606731E91CB`, 개인 키 `~/.tauri/tailgate.key`, 암호 있음, 사용자가 백업) |
+| 1단계 11-4 | | 시작 전(배포 워크플로·서명·공증) |
 
 ## 재검토에서 고친 것 (2026-10-19)
 
@@ -91,6 +92,7 @@
 | 10-22 | 전체 검사(10번 끝) | HEAD와 10-4 중간 커밋 a130dd3·9ee5f3b를 각각 임시 worktree에서 `cargo test`·`clippy --all-targets`·`fmt --check`, `npm test`·`check`·`build` | 모두 통과, 경고 0(Rust 120, vitest 24 / 중간 커밋은 22) |
 | 10-22 | 11-1 버전 한곳·CI | CI 단계를 로컬에서 같은 옵션으로(`npm ci`, `clippy --locked -- -D warnings`, `test --locked`), `tauri build --bundles app` | 통과. `Info.plist`의 `CFBundleShortVersionString`·`CFBundleVersion`이 `Cargo.toml`의 0.1.0. `npm ci` 직후 첫 `vite build`만 4분 9초(바로 다시 하면 1.2초, 원인 미확인) |
 | 10-22 | 11-2 라이선스 고지 | `npm run notices` 두 번(같은 결과인지), 자리표시 본문 검색, 브라우저로 보기, 검사 6개, `tauri build --bundles app` | 통과. 378KB, 같은 결과. 처음에는 37개 크레이트가 `<year> <copyright holders>` 표준 본문으로 나옴: cargo-about이 `ignore`의 파일 유형 glob으로만 찾아 `LICENSE_MIT`·`license-mit`를 놓침. 스크립트가 크레이트 폴더에서 찾아 넣은 뒤 남은 것은 파일이 아예 없는 15개(objc2·webview2-com 계열, block2, dispatch2, alloc-stdlib)와 MPL 3개(gotatun·option-ext·selectors)로, 설명을 붙임. `.app`의 `Contents/Resources/THIRD-PARTY-NOTICES.html`이 원본과 같음 |
+| 10-22 | 11-3 업데이터·정보 칸 | `cargo test`(121: 업데이트 실패 코드 구분, 업데이트 설정 칸 저장·기본값), 검사 6개, 고지 다시 만듦(크레이트 356). 실제 업데이트: scratchpad의 테스트 키로 서명한 릴리스 0.1.0·0.1.1 빌드(주소·키·버전은 `--config`로만 덮어씀), 로컬 서버의 `latest.json`, 임시 설정(직접 연결) | 통과. 0.1.0이 연결 직후 `socks5h://127.0.0.1:…`로 `latest.json`을 받아 0.1.1을 찾음, 사용자가 시트에서 [업데이트]→[다시 시작], `.app`이 0.1.1로 바뀌고 다시 켜진 앱이 정보 칸에 0.1.1·최신 버전 표시(사용자 확인). 단일 실행 플러그인이 다시 시작을 막지 않음. 확인 뒤 임시 `settings.json` 지움 |
 | 10-21 | 최신순 첫 화면 | `cargo test`(100: 빈 검색이 `tags=`와 `b<id>` 커서로 요청), `npm run check`·`build`·`test`, 실제 앱(Vite 다시 불러오기) | 통과. 앱이 최신 게시물 격자로 열리고 정렬 "최신순" 표시. 같은 실행에서 쉬는 터널의 건강 검사가 2분마다 핸드셰이크를 마침(로그 `tunnel health check: handshake completed`) |
 
 ## 남은 일
@@ -99,6 +101,8 @@
 - 끊김 감지는 테스트로 고정하지 못했다(실제 WireGuard 상대가 필요). 실제 앱에서 Wi-Fi를 끄는 방법으로만 확인한다. macOS 잠자기 동안 단조 시계가 멈추는 경우의 동작도 확인하지 않았다.
 - 18세 확인 화면의 다크 모드, 저장하지 못했을 때의 알림, 실제 버튼 클릭([18세 이상입니다], [종료])과 설정 화면의 언어 버튼 클릭은 손으로 해 보지 않았다(임시 코드로 같은 함수를 불렀다). 최근 검색어 목록의 클릭·키보드 선택, 설정 화면의 썸네일 크기 슬라이더와 [지우기]도 같다. 사용자 확인 때 함께 본다.
 - 저장 공간 칸(사용량 표시, [비우기], 최대 크기 바꾸기)은 화면으로 보지도, 손으로 해 보지도 않았다(확인 도중 사용자 요청으로 멈춤). 최대 크기를 낮췄을 때 실제 폴더가 줄어드는 것도 테스트로만 확인.
+- 업데이트 실패 표시(서버에 닿지 못함, 서명 불일치), 받는 중 [나중에]로 닫은 뒤 정보 칸에서 다시 여는 경로, Windows의 NSIS `passive` 설치는 해 보지 않았다. 다크 모드의 업데이트 시트·정보 칸도 못 봤다.
+- 첫 공개 릴리스 전에는 `latest.json`이 없어(404) 자동 확인이 조용히 실패하고, 정보 칸에서 직접 확인하면 "업데이트를 확인하지 못했습니다"가 뜬다.
 - **CI는 아직 한 번도 돌지 않았다.** 푸시해야 돈다. Windows 컴파일(aws-lc-sys 포함)과 Windows 테스트는 그때 처음 확인된다.
 - 다운로드 칸의 [선택…](폴더 대화상자), [열기], 잘못된 규칙을 입력했을 때의 오류 표시는 손으로 해 보지 않았다. Windows의 폴더 대화상자와 경로 표시도 미확인.
 - 블랙리스트 다시 받기는 실제 앱에서 해 보지 않았다. 창을 5분 넘게 둔 뒤 다른 앱에서 돌아와야 하고, 바뀐 결과를 보려면 e621에서 블랙리스트를 고쳐야 한다. 테스트로만 확인.
@@ -126,7 +130,7 @@
 ## 다음 할 일
 
 1. 11-1 확인: 푸시한 뒤 CI 결과(특히 Windows). 푸시 시점은 사용자가 정한다.
-2. 11-3 업데이터·정보 칸, 11-4 배포 워크플로·서명·공증(report.md 10절, 2026-10-21 승인). 11-4 전에 사용자가 Developer ID Application 인증서, App Store Connect API 키, 업데이트 서명 키를 준비한다.
+2. 11-4 배포 워크플로·서명·공증(report.md 10절, 2026-10-21 승인). 그 전에 사용자가 Developer ID Application 인증서와 App Store Connect API 키를 준비한다.
 3. 사용자 확인(위 "남은 일" 첫 항목)과 푸시. 사용자는 확인을 코드를 다 쓴 뒤로 미뤘으므로, 11번과의 순서는 사용자가 정한다.
 
 ## 개발 메모
