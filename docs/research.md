@@ -50,6 +50,17 @@ Pawru의 테스트 픽스처(`PawruTests/Fixtures/*.json`, 실제 응답)를 재
 - 자동완성은 철자가 비슷한 태그도 돌려준다. `zzzzqqqq`에 `zzz`, `zzz4` 등이 왔다.
 - `page=b<id>`로 이어 받은 두 번째 페이지는 첫 페이지 최소 id보다 작은 id부터 시작했다(겹침 없음).
 
+### 인기·풀·세트 (2026-10-22)
+
+e621ng `main`의 소스(라우트·컨트롤러·모델)를 읽고, 몇 가지는 터널을 거쳐 실호출로 확인했다.
+
+- **인기** `GET /popular.json?date=&scale=day|week|month`: 그 기간에 만든 게시물을 점수순으로 한 페이지만 준다(`page`·`limit` 없음). 형식은 `/posts.json`과 같은 `{"posts":[…]}`. 주는 월~일, 월은 그 달 전체. 미래 날짜는 빈 결과. 날짜는 `time_zone`(없으면 계정 설정, 기본 미국 동부)으로 읽는다(`popular_controller.rb`, `post_sets/popular.rb`, `application_controller.rb`의 `Time.use_zone`).
+  - 실호출(익명, 2026-10-21 일 단위): 75개. 시간대를 빼면 게시 시각이 모두 동부 시간(-04:00) 그날, `time_zone=Asia/Seoul`이면 모두 한국 시간(+09:00) 그날, `UTC`면 UTC 그날. 모르는 이름(`Not/AZone`)은 오류 없이 무시되고 동부 시간으로 읽는다.
+- **풀** `GET /pools.json`: `search[name_matches]`(공백은 `_`, 앞뒤 `*` 자동), `search[category]`(series/collection), `search[order]`(name, created_at, post_count, 그 밖은 updated_at 내림차순), `search[id]`(쉼표 목록), `page`, `limit`(기본 75, 최대 320). 맨 배열, 필드는 `id, name, description, category, is_active, post_ids(읽는 순서), post_count, creator_id, creator_name, created_at, updated_at`. 풀 하나에 최대 1,000개. 로그인 불필요.
+- **세트** `GET /post_sets.json`: `search[name|shortname|creator_id|creator_name|order]`. 익명은 공개 세트만, 로그인하면 내 비공개 세트도 보인다. 응답에 만든 사람 이름이 없다. `post_id=N`(세트 안에 그 게시물이 있는 세트, 50개 고정), `maintainer_id=N`(내 것과 관리하는 것). `GET /post_sets/for_select.json`(로그인)은 `{"Owned":[[이름,id]…],"Maintained":[…]}`, 이름은 35자에서 잘린 표시용. `POST /post_sets/{id}/add_posts.json`·`remove_posts.json`에 `post_ids[]`, 한 번에 320개, 1분 30번(넘으면 429). 세트 하나 최대 10,000개, 사용자당 75개.
+- **순서**: `pool:`·`set:` 검색은 풀·세트 순서를 지키지 않는다(`order:pool` 없음). `post_ids`를 `id:a,b,…`(최대 320개)로 받아 앱에서 다시 늘어놓는다.
+  - 실호출: 게시물 1,000개짜리 풀의 앞 120개를 `id:`로 한 번에 물으니 115개가 id 내림차순으로 왔다. 빠진 5개는 지워진 게시물로, `status:any`를 붙이면 120개가 오고 그 5개에 `deleted` 깃발이 있었다.
+
 ## 3. Rust 데스크톱 UI 선택지
 
 버전은 crates.io/npm에서 직접 확인했다.
