@@ -8,7 +8,11 @@
   import InfoPanel from "./InfoPanel.svelte";
   import MediaStage from "./MediaStage.svelte";
 
-  let { onclose, onpool }: { onclose: () => void; onpool: (id: number) => void } = $props();
+  let {
+    onclose,
+    onpool,
+    ontag,
+  }: { onclose: () => void; onpool: (id: number) => void; ontag: (tag: string) => void } = $props();
 
   let stage: MediaStage | undefined = $state();
 
@@ -117,6 +121,7 @@
           originalStatus={stage?.originalStatus() ?? null}
           onoriginal={() => stage?.loadOriginal()}
           {onpool}
+          {ontag}
         />
       </aside>
     {/if}

@@ -5,6 +5,7 @@
   import { currentLocale, m } from "../lib/i18n/index.svelte";
   import type { Post, TagCategory } from "../lib/posts";
   import { learnPoolNames, poolName } from "../lib/pools.svelte";
+  import { rememberCategories } from "../lib/search.svelte";
   import { setMenu } from "../lib/sets.svelte";
   import SetMenu from "./SetMenu.svelte";
   import { categoryTone } from "../lib/tags";
@@ -14,11 +15,13 @@
     originalStatus,
     onoriginal,
     onpool,
+    ontag,
   }: {
     post: Post;
     originalStatus: "idle" | "loading" | "failed" | null;
     onoriginal: () => void;
     onpool: (id: number) => void;
+    ontag: (tag: string) => void;
   } = $props();
 
   $effect(() => {
@@ -206,7 +209,17 @@
         <h3 class="text-xs text-faint">{m().viewer.tags[category]}</h3>
         <ul class="flex flex-wrap gap-1">
           {#each post.tags[category] as tag (tag)}
-            <li class={["rounded-sm px-1.5 py-0.5 text-sm select-text", categoryTone[category]]}>{tag}</li>
+            <li>
+              <button
+                class={["rounded-sm px-1.5 py-0.5 text-left text-sm hover:underline", categoryTone[category]]}
+                onclick={() => {
+                  rememberCategories({ [tag]: category });
+                  ontag(tag);
+                }}
+              >
+                {tag}
+              </button>
+            </li>
           {/each}
         </ul>
       </section>

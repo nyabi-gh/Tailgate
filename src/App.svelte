@@ -151,6 +151,13 @@
     openPool(id);
   }
 
+  /** From a tag in the viewer: a new search for that tag alone. */
+  async function searchTag(tag: string) {
+    await close();
+    view = "search";
+    run([tag]);
+  }
+
   // Favorites and votes in the results belong to whoever is signed in, so a change of account
   // reloads the search and the favorites.
   const signedInAs = $derived.by(() => {
@@ -394,7 +401,7 @@
 </div>
 
 {#if viewer.open}
-  <Viewer onclose={close} onpool={showPool} />
+  <Viewer onclose={close} onpool={showPool} ontag={searchTag} />
 {/if}
 
 <SignInSheet bind:this={signInSheet} />
