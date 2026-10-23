@@ -119,6 +119,10 @@ e621ng `main`의 소스(라우트·컨트롤러·모델)를 읽고, 몇 가지�
 - 공증은 App Store Connect API 키 또는 Apple ID + 앱 전용 암호로 한다. Tauri 번들러가 환경 변수(`APPLE_API_KEY` 등)를 받아 자동 처리한다.
 - 공증 없이 배포하면 최근 macOS에서는 우클릭-열기 우회가 막혀 있어 시스템 설정에서 직접 허용해야 한다.
 - 아키텍처: Apple Silicon 전용(`aarch64-apple-darwin`) 또는 유니버설. 유니버설은 빌드 시간과 용량이 두 배다.
+- 2026-10-22 확인(공증하지 않기로 한 뒤, report.md 2절):
+  - Tauri는 `.app`을 공증·staple하지만 DMG는 서명만 하고 공증하지 않는다(`tauri-bundler`의 `macos/dmg/mod.rs`, `macos/app.rs`). 서명은 `APPLE_CERTIFICATE`·`APPLE_CERTIFICATE_PASSWORD`로 임시 키체인에 인증서를 넣어 하고, 공증 자격 증명은 `APPLE_API_KEY`·`APPLE_API_ISSUER`·`APPLE_API_KEY_PATH`(`macos/sign.rs`).
+  - `signingIdentity`가 없으면 링커가 실행 파일만 ad-hoc 서명해 번들이 봉인되지 않는다(식별자 `tailgate-<해시>`, `codesign --verify`가 "code has no resources but signature indicates they must be present"로 실패). `"-"`로 두면 번들 전체가 `pro.tb.nyabi.Tailgate`로 ad-hoc 서명되고 리소스가 봉인된다.
+  - 받은 것처럼 격리 표시를 붙인 ad-hoc 앱은 `spctl --assess`가 거부한다. `xattr -dr com.apple.quarantine`을 하면 격리 표시가 모두 지워지고 서명은 그대로 유효하다.
 
 ### Windows
 - NSIS 설치 파일(`-setup.exe`)이 기본이다. WebView2는 Windows 10/11에 대부분 기본 설치되어 있고, 없으면 설치기가 부트스트래퍼로 받는다.
@@ -129,6 +133,7 @@ e621ng `main`의 소스(라우트·컨트롤러·모델)를 읽고, 몇 가지�
 ### 자동 업데이트
 - `tauri-plugin-updater`: 업데이트 파일을 자체 키로 서명하고, GitHub Releases에 올린 `latest.json`을 확인한다. 코드 서명과는 별개다.
 - GitHub Actions의 `tauri-action`이 두 플랫폼 빌드 → 릴리스 업로드 → `latest.json` 생성을 한 번에 해 준다.
+- 이 앱은 `tauri-action` 대신 워크플로에서 직접 빌드·`latest.json` 작성·`gh release create --draft`를 한다(report.md 10절). 2026-10-22 실제 업데이트 확인: 테스트 키로 서명한 0.1.0이 앱 SOCKS를 거쳐 로컬 `latest.json`을 받고 0.1.1 `.app.tar.gz`를 검증·설치한 뒤 다시 시작했다. 단일 실행 플러그인이 다시 시작을 막지 않았다. `tauri-plugin-updater` 2.14는 `http` 주소를 `dangerousInsecureTransportProtocol` 없이는 받지 않고, `pubkey`가 설정에 없으면 플러그인이 시작되지 않는다.
 
 ## 6. 앱 내부 전용 VPN (WireGuard 유저스페이스)
 

@@ -1,6 +1,6 @@
 # 진행 상황
 
-2026-10-22 기준. 계획은 [report.md](report.md), 근거는 [research.md](research.md). 상태는 이 문서에만 적는다.
+2026-10-23 기준. 계획은 [report.md](report.md), 근거는 [research.md](research.md). 상태는 이 문서에만 적는다.
 
 ## 지금 단계
 
@@ -114,6 +114,7 @@
 - 저장 공간 칸(사용량 표시, [비우기], 최대 크기 바꾸기)은 화면으로 보지도, 손으로 해 보지도 않았다(확인 도중 사용자 요청으로 멈춤). 최대 크기를 낮췄을 때 실제 폴더가 줄어드는 것도 테스트로만 확인.
 - 업데이트 실패 표시(서버에 닿지 못함, 서명 불일치), 받는 중 [나중에]로 닫은 뒤 정보 칸에서 다시 여는 경로, Windows의 NSIS `passive` 설치는 해 보지 않았다. 다크 모드의 업데이트 시트·정보 칸도 못 봤다.
 - 첫 공개 릴리스 전에는 `latest.json`이 없어(404) 자동 확인이 조용히 실패하고, 정보 칸에서 직접 확인하면 "업데이트를 확인하지 못했습니다"가 뜬다.
+- 인기·풀·세트 화면의 다크 모드, 목록을 받다 실패했을 때의 오류 표시와 [다시 시도], 세트 메뉴의 실패 되돌림은 손으로 해 보지 않았다(테스트와 코드로만). 세트 넣기·빼기 응답의 상태 코드는 로그에 남지 않아 보지 못했다(디코딩은 됐다).
 - 컴퓨터의 시간대 이름을 e621이 모르면 오류 없이 미국 동부 시간으로 읽는다. 표준 IANA 이름(`Intl`이 주는 값)이면 될 것으로 보지만 Windows의 값은 확인하지 않았다.
 - 다운로드 칸의 [선택…](폴더 대화상자), [열기], 잘못된 규칙을 입력했을 때의 오류 표시는 손으로 해 보지 않았다. Windows의 폴더 대화상자와 경로 표시도 미확인.
 - 블랙리스트 다시 받기는 실제 앱에서 해 보지 않았다. 창을 5분 넘게 둔 뒤 다른 앱에서 돌아와야 하고, 바뀐 결과를 보려면 e621에서 블랙리스트를 고쳐야 한다. 테스트로만 확인.
@@ -134,13 +135,19 @@
 - `jp-tyo-wg-002`가 다른 기기(공식 Mullvad 앱)에서는 붙는지 확인하면 우리 기기 키만의 문제인지 가릴 수 있다(원할 때만). 2026-10-22 개발 앱이 이 서버로 정상 연결됐다. 그때의 무응답은 서버 쪽 일시적인 문제였을 수 있다.
 - 터널 시작이 5.3초 걸린 1회(첫 핸드셰이크 재전송으로 보임)가 다시 나오는지 지켜본다.
 - 터널 안 연결이 리셋되거나 timeout으로 끊기면 읽기가 오류가 아니라 EOF로 끝난다. 지금은 모든 요청이 TLS라 잘림이 오류로 드러나지만, 평문 요청을 쓰게 되면 `netstack.rs`에서 구분해야 한다.
-- Windows 실측 전부: 터널, aws-lc-rs 빌드, WebView2의 `media://` Range, Mica, Ctrl K. Windows 기기나 VM이 필요하다.
+- Windows 실측 전부: 터널, 키체인, WebView2의 `media://` Range, Mica, Ctrl K, 폴더 대화상자, 업데이트 설치. Windows 기기나 VM이 필요하다. 컴파일(aws-lc-sys 포함)과 테스트는 2026-10-22 CI에서 통과했다.
 - macOS WKWebView의 WebM 재생 확인.
 
 ## 다음 할 일
 
-1. 첫 배포(11-4 확인): 사용자가 GitHub 환경 `release`를 만들고 시크릿 2개(업데이트 서명 키와 암호)를 넣은 뒤, 푸시해서 CI가 통과하면 주석 태그 `v0.1.0`을 푸시한다. 초안 릴리스의 DMG를 이 Mac에서 받아 README대로 설치해 보고, 문제가 없으면 사용자가 공개한다. 그 뒤 첫 업데이트(0.1.1)에서 키체인 허용 창이 다시 뜨는지 본다.
-2. 사용자 확인(위 "남은 일" 첫 항목). 사용자는 확인을 코드를 다 쓴 뒤로 미뤘으므로, 11번과의 순서는 사용자가 정한다.
+1. **첫 배포 v0.1.0**(11-4 확인). 사용자가 직접 하는 단계와 명령:
+   - GitHub 환경 `release`를 만들고 `v*` 태그에서만 쓰게 묶는다: `gh api -X PUT repos/nyabi-gh/Tailgate/environments/release -F "deployment_branch_policy[protected_branches]=false" -F "deployment_branch_policy[custom_branch_policies]=true"`, 이어서 `gh api -X POST repos/nyabi-gh/Tailgate/environments/release/deployment-branch-policies -f name="v*" -f type=tag`.
+   - 시크릿 2개: `gh secret set TAURI_SIGNING_PRIVATE_KEY --env release --repo nyabi-gh/Tailgate < ~/.tauri/tailgate.key`, `gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --env release --repo nyabi-gh/Tailgate`(입력 창). 확인은 `gh secret list --env release --repo nyabi-gh/Tailgate`.
+   - 로컬의 남은 문서 커밋을 푸시하고 CI가 통과하면 주석 태그: `git tag -a v0.1.0 -m "<릴리스 노트>"`, `git push origin v0.1.0`. 태그 메시지가 릴리스 노트이자 앱 업데이트 시트의 노트가 된다.
+   - 배포 워크플로가 끝나면 초안의 DMG를 받아(`gh release download v0.1.0 --repo nyabi-gh/Tailgate --pattern "*.dmg" --dir ~/Downloads`) README대로 설치해 본다. 문제가 없으면 공개: `gh release edit v0.1.0 --repo nyabi-gh/Tailgate --draft=false`. 공개해야 앱의 업데이트 주소(`releases/latest`)에 잡힌다.
+   - 그 뒤 0.1.1을 내서 실제 앱 안 업데이트와, ad-hoc 서명이라 업데이트 뒤 키체인 허용 창이 다시 뜨는지 본다. 버전은 `src-tauri/Cargo.toml`만 올린다.
+2. 사용자 확인(위 "남은 일" 첫 항목). 첫 릴리스 전후 어느 쪽이든 사용자가 정한다.
+3. 그 뒤: Windows 실기기 확인(통과하면 Windows 산출물 공개), 2단계(report.md 3절).
 
 ## 개발 메모
 
@@ -156,5 +163,10 @@
 - **앱이 연결된 동안 `tunnel_probe`·`api_probe`를 돌리지 않는다.** 같은 기기 키라 먼저 연결한 쪽이 응답을 못 받는다(research.md 7절). 앱도 두 개 띄울 수 없다(개발 앱과 설치본 포함).
 - 터널 패킷 보기: `RUST_LOG=info,tunnel_packets=trace,smoltcp=trace`(gotatun까지 보려면 `gotatun=trace`). 오가는 IP 패킷과 smoltcp의 DNS·TCP 상태가 찍힌다. 응답이 아예 안 오는 문제는 이것으로 구분한다.
 - 연결 설정을 처음 상태로 되돌리려면 앱을 끄고 `settings.json`을 지운다(첫 실행 규칙을 다시 탄다. 18세 확인과 언어도 처음 상태가 된다). 서버 목록 캐시는 `relays.json`을 지우면 다음 연결에서 새로 받는다.
+- `npx tauri …`(서명 키 만들기 등)는 프로젝트 폴더에서 실행한다. `@tauri-apps/cli`가 프로젝트의 `node_modules`에만 있다.
+- 설치본(`/Applications/Tailgate.app`)과 개발 앱은 같은 번들 ID라 동시에 뜨지 않고(단일 실행), 같은 기기 키라 동시에 연결하면 서로 끊긴다. 개발 앱을 띄우거나 `tunnel_probe`를 돌리기 전에 설치본을 끈다.
+- 다시 빌드한 개발 앱은 처음 키체인을 읽을 때 허용 창을 띄운다. Mac이 화면이 꺼진 절전 깨어남 상태면 창을 띄우지 못해 `In dark wake, no UI possible`로 실패한다(사용자가 Mac 앞에 있을 때 다시 실행).
+- 업데이트를 로컬에서 끝까지 해 보는 법(2026-10-22에 씀): scratchpad에 `npx tauri signer generate --ci -p <암호> -w <경로>`로 테스트 키를 만들고, 커밋하는 파일은 고치지 않은 채 `--config`(JSON 파일)로 `plugins.updater.endpoints`(로컬 `http://127.0.0.1:<포트>/latest.json`)·`dangerousInsecureTransportProtocol`·`pubkey`·`version`·`bundle.createUpdaterArtifacts`를 덮어써 옛 버전과 새 버전을 빌드한다. 새 버전 빌드에는 `TAURI_SIGNING_PRIVATE_KEY`(파일 내용)와 암호를 준다. `python3 -m http.server`로 `latest.json`과 `.app.tar.gz`를 내놓고, 앱의 요청이 터널을 거치므로 확인 동안만 `settings.json`을 직접 연결로 둔다(끝나면 되돌린다).
+- 터널로 e621을 직접 물어볼 때(앱을 끈 뒤): `tunnel_probe --serve`의 출력을 거르지 말고 SOCKS 주소를 읽는다. curl은 `-g`를 붙여야 `search[...]`의 대괄호를 범위 문법으로 읽지 않는다.
 - 원격 저장소: `origin` = https://github.com/nyabi-gh/Tailgate (공개). 공개 저장소 생성 같은 명령은 권한 검사에 막혀 사용자가 직접 실행했다.
 - 화면 확인: 키 입력 자동화(손쉬운 사용) 권한은 없고 화면 기록 권한은 있다. 창 캡처는 `CGWindowListCopyWindowInfo`로 창 번호를 찾아 `screencapture -l <번호>`. CSS 계산값은 작은 Swift 프로그램으로 WKWebView에 빌드된 CSS를 띄워 `getComputedStyle`로 잰다.
