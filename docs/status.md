@@ -145,14 +145,14 @@
 
 ## 다음 할 일
 
-1. **첫 배포 v0.1.0**(11-4 확인). 사용자가 직접 하는 단계와 명령:
+1. **첫 배포 v0.1.0**(11-4 확인). 2026-10-25 사용자 결정으로 Windows도 함께 공개한다(배포 워크플로가 `-setup.exe`와 `latest.json`의 `windows-x86_64`를 만듦). 사용자가 직접 하는 단계와 명령:
    - GitHub 환경 `release`를 만들고 `v*` 태그에서만 쓰게 묶는다: `gh api -X PUT repos/nyabi-gh/Tailgate/environments/release -F "deployment_branch_policy[protected_branches]=false" -F "deployment_branch_policy[custom_branch_policies]=true"`, 이어서 `gh api -X POST repos/nyabi-gh/Tailgate/environments/release/deployment-branch-policies -f name="v*" -f type=tag`.
    - 시크릿 2개: `gh secret set TAURI_SIGNING_PRIVATE_KEY --env release --repo nyabi-gh/Tailgate < ~/.tauri/tailgate.key`, `gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --env release --repo nyabi-gh/Tailgate`(입력 창). 확인은 `gh secret list --env release --repo nyabi-gh/Tailgate`.
    - 로컬의 남은 문서 커밋을 푸시하고 CI가 통과하면 주석 태그: `git tag -a v0.1.0 -m "<릴리스 노트>"`, `git push origin v0.1.0`. 태그 메시지가 릴리스 노트이자 앱 업데이트 시트의 노트가 된다.
-   - 배포 워크플로가 끝나면 초안의 DMG를 받아(`gh release download v0.1.0 --repo nyabi-gh/Tailgate --pattern "*.dmg" --dir ~/Downloads`) README대로 설치해 본다. 문제가 없으면 공개: `gh release edit v0.1.0 --repo nyabi-gh/Tailgate --draft=false`. 공개해야 앱의 업데이트 주소(`releases/latest`)에 잡힌다.
+   - 배포 워크플로가 끝나면 초안의 DMG를 받아(`gh release download v0.1.0 --repo nyabi-gh/Tailgate --pattern "*.dmg" --dir ~/Downloads`) README대로 설치해 본다. Windows는 `--pattern "*-setup.exe"`로 받아 설치한다. 문제가 없으면 공개: `gh release edit v0.1.0 --repo nyabi-gh/Tailgate --draft=false`. 공개해야 앱의 업데이트 주소(`releases/latest`)에 잡힌다.
    - 그 뒤 0.1.1을 내서 실제 앱 안 업데이트와, ad-hoc 서명이라 업데이트 뒤 키체인 허용 창이 다시 뜨는지 본다. 버전은 `src-tauri/Cargo.toml`만 올린다.
 2. 사용자 확인(위 "남은 일" 첫 항목). 첫 릴리스 전후 어느 쪽이든 사용자가 정한다.
-3. 그 뒤: Windows 실기기 확인(통과하면 Windows 산출물 공개), 2단계(report.md 3절).
+3. 그 뒤: 설치한 Windows 앱에서 터널(WireGuard·Mullvad)·자격 증명 관리자·동영상 재생 확인, 2단계(report.md 3절).
 
 ## 개발 메모
 
