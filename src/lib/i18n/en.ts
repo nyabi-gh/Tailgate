@@ -56,6 +56,7 @@ const en = {
     languages: { system: "System", en: "English", ko: "한국어" },
     browse: "Browsing",
     thumbnailSize: "Thumbnail size",
+    pageZoom: "Zoom",
     recentSearches: "Recent searches",
     recentCount: (count: number) => (count === 0 ? "None" : count === 1 ? "1 search" : `${count} searches`),
     clearRecent: "Clear",

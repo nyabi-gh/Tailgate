@@ -38,14 +38,17 @@
     type CacheUsage,
   } from "../lib/storage";
   import { currentLocale, m, type Language } from "../lib/i18n/index.svelte";
-  import { CELL_WIDTH } from "../lib/layout";
+  import { CELL_WIDTH, PAGE_ZOOM } from "../lib/layout";
+  import { shortcutLabel } from "../lib/platform";
   import {
     cellWidth,
     changeGeneralSettings,
     clearRecentSearches,
     generalSettings,
+    pageZoom,
     recentSearches,
     setCellWidth,
+    setPageZoom,
   } from "../lib/settings.svelte";
   import {
     appVersion,
@@ -430,6 +433,23 @@
   <section class="flex flex-col gap-2">
     <h2 class="px-1 font-strong">{m().settings.browse}</h2>
     <div class={group}>
+      <div class={row}>
+        <span class={label}>{m().settings.pageZoom}</span>
+        <label class="relative -ml-3 flex h-8 items-center rounded-md transition-colors hover:bg-hover">
+          <span class="sr-only">{m().settings.pageZoom}</span>
+          <select
+            class="h-full appearance-none bg-transparent pr-7 pl-3 outline-none"
+            value={pageZoom()}
+            onchange={(event) => setPageZoom(Number(event.currentTarget.value))}
+          >
+            {#each PAGE_ZOOM.levels as level (level)}
+              <option value={level}>{level}%</option>
+            {/each}
+          </select>
+          <ChevronDown size={14} strokeWidth={2} class="pointer-events-none absolute right-2.5 text-dim" />
+        </label>
+        <span class="ml-auto text-dim">{shortcutLabel("+")} / {shortcutLabel("−")} / {shortcutLabel("0")}</span>
+      </div>
       <div class={row}>
         <label class={label} for="thumbnail-size">{m().settings.thumbnailSize}</label>
         <input

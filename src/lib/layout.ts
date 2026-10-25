@@ -6,6 +6,20 @@ export function clampCellWidth(width: number): number {
   return Math.round(Math.min(CELL_WIDTH.max, Math.max(CELL_WIDTH.min, width)));
 }
 
+/** The whole page's zoom steps in percent, for large or high-density screens. */
+export const PAGE_ZOOM = { levels: [80, 90, 100, 110, 125, 150, 175, 200], min: 80, max: 200, initial: 100 };
+
+export function clampPageZoom(zoom: number): number {
+  return Math.min(PAGE_ZOOM.max, Math.max(PAGE_ZOOM.min, zoom));
+}
+
+/** The next step in `direction`, from a saved zoom that may lie between the steps. */
+export function stepPageZoom(zoom: number, direction: 1 | -1): number {
+  const ahead = PAGE_ZOOM.levels.filter((level) => (direction > 0 ? level > zoom : level < zoom));
+  const next = direction > 0 ? ahead[0] : ahead[ahead.length - 1];
+  return next ?? (direction > 0 ? PAGE_ZOOM.max : PAGE_ZOOM.min);
+}
+
 /** Cells are 3:4 portrait, since most e621 art is taller than wide and gets cropped less so. */
 export const CELL_ASPECT = 3 / 4;
 

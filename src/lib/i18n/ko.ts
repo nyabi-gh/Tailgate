@@ -58,6 +58,7 @@ const ko: Messages = {
     languages: { system: "시스템", en: "English", ko: "한국어" },
     browse: "보기",
     thumbnailSize: "썸네일 크기",
+    pageZoom: "화면 확대",
     recentSearches: "최근 검색어",
     recentCount: (count) => (count === 0 ? "없음" : `${count}개`),
     clearRecent: "지우기",

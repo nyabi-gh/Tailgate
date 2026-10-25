@@ -1,20 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { attempt, type SettingsChangeError } from "./connection.svelte";
 import { m, useLanguage, type Language } from "./i18n/index.svelte";
-import { CELL_WIDTH, clampCellWidth } from "./layout";
+import { CELL_WIDTH, PAGE_ZOOM, clampCellWidth, clampPageZoom, stepPageZoom } from "./layout";
 import { notify } from "./toast.svelte";
 
 /** Mirrors `General` in src-tauri/src/settings.rs. */
 export type GeneralSettings = { language: Language; adult: boolean };
 /** Mirrors `Browse` in src-tauri/src/settings.rs. */
-type BrowseSettings = { cellWidth: number | null; recentSearches: string[] };
+type BrowseSettings = { cellWidth: number | null; recentSearches: string[]; pageZoom: number | null };
 
 const RECENT_SEARCHES = 10;
 /** The cell width changes with every wheel step; the file only needs where it settles. */
 const CELL_WIDTH_SAVE_DELAY_MS = 500;
 
 let general = $state<GeneralSettings>({ language: "system", adult: false });
-let browse = $state.raw<BrowseSettings>({ cellWidth: null, recentSearches: [] });
+let browse = $state.raw<BrowseSettings>({ cellWidth: null, recentSearches: [], pageZoom: null });
 let browseSave: ReturnType<typeof setTimeout> | undefined;
 
 export function generalSettings(): GeneralSettings {
@@ -23,7 +24,7 @@ export function generalSettings(): GeneralSettings {
 
 /**
  * Read before the first render, so the page starts in the chosen language, behind the age check
- * when it should, and at the saved thumbnail size.
+ * when it should, and at the saved thumbnail size and zoom.
  */
 export async function loadSettings() {
   [general, browse] = await Promise.all([
@@ -31,6 +32,7 @@ export async function loadSettings() {
     invoke<BrowseSettings>("browse_settings"),
   ]);
   useLanguage(general.language);
+  await applyPageZoom();
 }
 
 /** Takes effect at once, also when it cannot be saved. */
@@ -46,6 +48,31 @@ export function cellWidth(): number {
 
 export function setCellWidth(width: number) {
   changeBrowse({ ...browse, cellWidth: clampCellWidth(width) }, CELL_WIDTH_SAVE_DELAY_MS);
+}
+
+export function pageZoom(): number {
+  return clampPageZoom(browse.pageZoom ?? PAGE_ZOOM.initial);
+}
+
+export function setPageZoom(zoom: number) {
+  changeBrowse({ ...browse, pageZoom: clampPageZoom(zoom) });
+  applyPageZoom().catch((error) => console.error("could not zoom the page", error));
+}
+
+export function zoomPageIn() {
+  setPageZoom(stepPageZoom(pageZoom(), 1));
+}
+
+export function zoomPageOut() {
+  setPageZoom(stepPageZoom(pageZoom(), -1));
+}
+
+export function resetPageZoom() {
+  setPageZoom(PAGE_ZOOM.initial);
+}
+
+function applyPageZoom(): Promise<void> {
+  return getCurrentWebview().setZoom(pageZoom() / 100);
 }
 
 /** Newest first. */

@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
-import { CELL_ASPECT, CELL_WIDTH, cellPosition, clampCellWidth, grid, rowOf, visibleRange } from "./layout";
+import {
+  CELL_ASPECT,
+  CELL_WIDTH,
+  cellPosition,
+  clampCellWidth,
+  grid,
+  rowOf,
+  stepPageZoom,
+  visibleRange,
+} from "./layout";
+
+describe("stepPageZoom", () => {
+  it("moves one step either way", () => {
+    expect(stepPageZoom(100, 1)).toBe(110);
+    expect(stepPageZoom(100, -1)).toBe(90);
+  });
+
+  it("stops at the ends", () => {
+    expect(stepPageZoom(200, 1)).toBe(200);
+    expect(stepPageZoom(80, -1)).toBe(80);
+  });
+
+  it("moves from a zoom between the steps to the nearest step that way", () => {
+    expect(stepPageZoom(130, 1)).toBe(150);
+    expect(stepPageZoom(130, -1)).toBe(125);
+  });
+});
 
 describe("grid", () => {
   it("fits as many columns as the target width allows and fills the width exactly", () => {

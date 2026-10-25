@@ -46,6 +46,8 @@ pub struct Browse {
     pub cell_width: Option<u16>,
     /// Newest first.
     pub recent_searches: Vec<String>,
+    /// The whole page's zoom in percent, once the user has changed it.
+    pub page_zoom: Option<u16>,
 }
 
 /// `None` follows the app's default, so a later default reaches users who never chose.
@@ -375,6 +377,7 @@ mod tests {
         let browse = Browse {
             cell_width: Some(240),
             recent_searches: vec!["wolf rating:s".into(), "fox".into()],
+            page_zoom: Some(150),
         };
         let downloads = DownloadSettings {
             folder: Some(PathBuf::from("/tmp/elsewhere")),
@@ -423,6 +426,7 @@ mod tests {
         let saved = settings.set_browse(Browse {
             cell_width: Some(200),
             recent_searches: Vec::new(),
+            page_zoom: None,
         });
         assert!(matches!(saved, Err(SettingsError::NotLoaded)));
         assert_eq!(fs::read_to_string(&path).unwrap(), "{ not json");
