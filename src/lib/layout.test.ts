@@ -5,10 +5,24 @@ import {
   cellPosition,
   clampCellWidth,
   grid,
+  isLargeCell,
   rowOf,
   stepPageZoom,
   visibleRange,
 } from "./layout";
+
+describe("isLargeCell", () => {
+  it("uses the sample from 240px at 100%", () => {
+    expect(isLargeCell(230, 100)).toBe(false);
+    expect(isLargeCell(240, 100)).toBe(true);
+  });
+
+  it("counts the cell at the size the page zoom draws it", () => {
+    expect(isLargeCell(180, 125)).toBe(false);
+    expect(isLargeCell(200, 125)).toBe(true);
+    expect(isLargeCell(260, 90)).toBe(false);
+  });
+});
 
 describe("stepPageZoom", () => {
   it("moves one step either way", () => {

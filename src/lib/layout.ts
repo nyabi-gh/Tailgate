@@ -20,6 +20,14 @@ export function stepPageZoom(zoom: number, direction: 1 | -1): number {
   return next ?? (direction > 0 ? PAGE_ZOOM.max : PAGE_ZOOM.min);
 }
 
+/** From this cell width on, as it shows on screen, thumbnails use the sample instead of the preview. */
+const LARGE_CELL_WIDTH = 240;
+
+/** The page zoom draws a cell larger than its CSS width, so the preview turns soft sooner. */
+export function isLargeCell(cellWidth: number, pageZoom: number): boolean {
+  return (cellWidth * pageZoom) / 100 >= LARGE_CELL_WIDTH;
+}
+
 /** Cells are 3:4 portrait, since most e621 art is taller than wide and gets cropped less so. */
 export const CELL_ASPECT = 3 / 4;
 

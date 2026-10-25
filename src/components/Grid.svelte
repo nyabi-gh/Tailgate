@@ -4,10 +4,11 @@
   import { canLoadRemote } from "../lib/connection.svelte";
   import { apiErrorMessage } from "../lib/errors";
   import { m } from "../lib/i18n/index.svelte";
-  import { cellPosition, clampCellWidth, grid, rowOf, visibleRange } from "../lib/layout";
+  import { cellPosition, clampCellWidth, grid, isLargeCell, rowOf, visibleRange } from "../lib/layout";
   import { isMac } from "../lib/platform";
   import type { ApiErrorCode, Post } from "../lib/posts";
   import type { PostList } from "../lib/search.svelte";
+  import { pageZoom } from "../lib/settings.svelte";
   import Thumb from "./Thumb.svelte";
 
   let {
@@ -25,8 +26,6 @@
     onopen: (post: Post) => void;
   } = $props();
 
-  /** From this cell width on, thumbnails use the sample instead of the preview. */
-  const LARGE_CELL_WIDTH = 240;
   const GAP = 3;
   const PADDING = 8;
 
@@ -123,7 +122,7 @@
           y={position.y}
           width={layout.cellWidth}
           height={layout.cellHeight}
-          large={cellWidth >= LARGE_CELL_WIDTH}
+          large={isLargeCell(cellWidth, pageZoom())}
           blacklisted={list.isBlacklisted(post)}
           transitionName={transitionId === post.id ? "post-media" : undefined}
           onopen={() => onopen(post)}
