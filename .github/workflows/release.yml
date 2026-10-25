@@ -1,7 +1,7 @@
 name: Release
 
-# A version tag builds the macOS release as a draft (docs/report.md §10). The app is ad-hoc
-# signed and not notarized; the README tells users how to open it.
+# A version tag builds the macOS and Windows release as a draft (docs/report.md §10). Neither is
+# code signed by Apple or Microsoft; the README tells users how to open them.
 # The annotated tag's message becomes the release notes, also shown by the in-app updater.
 on:
   push:
@@ -14,12 +14,31 @@ jobs:
   checks:
     uses: ./.github/workflows/ci.yml
 
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: 1.98.1
+
+      - name: The tag matches the version
+        id: version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 --manifest-path src-tauri/Cargo.toml | jq -r '.packages[0].version')
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match version $version in src-tauri/Cargo.toml"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
   macos:
-    needs: checks
+    needs: [checks, version]
     runs-on: macos-latest
     environment: release
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -36,28 +55,6 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: The tag matches the version
-        id: version
-        run: |
-          version=$(cargo metadata --no-deps --format-version 1 --manifest-path src-tauri/Cargo.toml | jq -r '.packages[0].version')
-          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match version $version in src-tauri/Cargo.toml"
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      # The checkout leaves a lightweight copy of the tag; the notes are in the tag object.
-      - name: Release notes
-        run: |
-          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
-          # Subject and body only, so a signed tag's signature stays out.
-          notes=$(git for-each-ref "refs/tags/$GITHUB_REF_NAME" --format='%(contents:subject)%0a%0a%(contents:body)')
-          printf '%s\n' "$notes" > "$RUNNER_TEMP/notes.md"
-          if [ "$(git cat-file -t "$GITHUB_REF_NAME")" != tag ] || [ -z "$notes" ]; then
-            echo "::error::$GITHUB_REF_NAME needs to be an annotated tag with the release notes as its message"
-            exit 1
-          fi
-
       - run: npm ci
 
       - name: Build
@@ -68,7 +65,7 @@ jobs:
 
       - name: Collect the files
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           bundle=src-tauri/target/release/bundle
           mkdir release
@@ -87,32 +84,16 @@ jobs:
           grep -qx 'Identifier=pro.tb.nyabi.Tailgate' <<< "$details"
           grep -qx 'Signature=adhoc' <<< "$details"
 
-      - name: Update manifest
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          jq -n \
-            --arg version "$VERSION" \
-            --rawfile notes "$RUNNER_TEMP/notes.md" \
-            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --rawfile signature "release/Tailgate_${VERSION}_aarch64.app.tar.gz.sig" \
-            --arg url "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/Tailgate_${VERSION}_aarch64.app.tar.gz" \
-            '{version: $version, notes: $notes, pub_date: $date, platforms: {"darwin-aarch64": {signature: $signature, url: $url}}}' \
-            > release/latest.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-macos
+          path: release/*
+          if-no-files-found: error
 
-      - name: Draft release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" release/* \
-            --draft --verify-tag --title "Tailgate $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
-
-  # Built and kept as a workflow artifact only: Windows has not been tried on a real machine yet,
-  # so it stays out of the public release (docs/report.md §10).
   windows:
-    needs: checks
+    needs: [checks, version]
     runs-on: windows-latest
+    environment: release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -130,10 +111,82 @@ jobs:
           workspaces: src-tauri
 
       - run: npm ci
-      - run: npx tauri build --bundles nsis
+
+      # The updater installs the NSIS installer itself, so its signature is all it needs.
+      - name: Build
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":true}}'
+
+      - name: Collect the files
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          bundle=src-tauri/target/release/bundle/nsis
+          mkdir release
+          cp "$bundle/Tailgate_${VERSION}_x64-setup.exe" release/
+          cp "$bundle/Tailgate_${VERSION}_x64-setup.exe.sig" release/
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: tailgate-windows
-          path: src-tauri/target/release/bundle/nsis/*-setup.exe
+          name: release-windows
+          path: release/*
           if-no-files-found: error
+
+  draft:
+    needs: [version, macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The checkout leaves a lightweight copy of the tag; the notes are in the tag object.
+      - name: Release notes
+        run: |
+          git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+          # Subject and body only, so a signed tag's signature stays out.
+          notes=$(git for-each-ref "refs/tags/$GITHUB_REF_NAME" --format='%(contents:subject)%0a%0a%(contents:body)')
+          printf '%s\n' "$notes" > "$RUNNER_TEMP/notes.md"
+          if [ "$(git cat-file -t "$GITHUB_REF_NAME")" != tag ] || [ -z "$notes" ]; then
+            echo "::error::$GITHUB_REF_NAME needs to be an annotated tag with the release notes as its message"
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
+      - name: Update manifest
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}"
+          mac="Tailgate_${VERSION}_aarch64.app.tar.gz"
+          windows="Tailgate_${VERSION}_x64-setup.exe"
+          jq -n \
+            --arg version "$VERSION" \
+            --rawfile notes "$RUNNER_TEMP/notes.md" \
+            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --rawfile macSignature "release/$mac.sig" \
+            --arg macUrl "$base/$mac" \
+            --rawfile windowsSignature "release/$windows.sig" \
+            --arg windowsUrl "$base/$windows" \
+            '{version: $version, notes: $notes, pub_date: $date, platforms: {
+              "darwin-aarch64": {signature: $macSignature, url: $macUrl},
+              "windows-x86_64": {signature: $windowsSignature, url: $windowsUrl}
+            }}' \
+            > release/latest.json
+
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --draft --verify-tag --title "Tailgate $VERSION" --notes-file "$RUNNER_TEMP/notes.md"

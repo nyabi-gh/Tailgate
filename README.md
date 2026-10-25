@@ -1,6 +1,6 @@
 # Tailgate
 
-A desktop viewer for [e621](https://e621.net) on macOS. It can reach e621 through its own
+A desktop viewer for [e621](https://e621.net) on macOS and Windows. It can reach e621 through its own
 WireGuard tunnel — a WireGuard file or a Mullvad account — without a system VPN, and only the
 app's own traffic goes through it.
 
@@ -44,7 +44,18 @@ macOS may ask whether Tailgate can use items in your keychain, where it keeps yo
 and VPN settings. Choose **Always Allow**. Because the app is not signed with an Apple
 developer certificate, macOS may ask again after an update.
 
-A Windows version is planned but not released yet.
+## Install (Windows)
+
+Requires 64-bit Windows 10 or 11.
+
+1. Download `Tailgate_<version>_x64-setup.exe` from the
+   [latest release](https://github.com/nyabi-gh/Tailgate/releases/latest).
+2. Run it. Tailgate is not signed with a Microsoft-trusted certificate, so Windows SmartScreen
+   may say "Windows protected your PC". Choose **More info**, then **Run anyway**. Do this only
+   for a copy you downloaded from this repository's releases.
+
+Later versions install from inside the app (Settings → About). Your e621 API key and VPN settings
+are kept in Windows Credential Manager.
 
 ## Build from source
 
