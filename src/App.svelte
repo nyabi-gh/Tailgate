@@ -218,7 +218,7 @@
   <Sidebar current={view} onselect={(next) => (view = next)} onaccount={() => signInSheet.open()} />
 
   <main class="my-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg bg-panel shadow-panel">
-    <header class="flex min-h-11 shrink-0 items-center gap-2 px-3 py-1" data-tauri-drag-region>
+    <header class="flex min-h-11 shrink-0 items-center gap-2 px-3 pt-2.5 pb-1" data-tauri-drag-region>
       {#if view === "favorites" || view === "settings"}
         <h1 class="px-1 text-base font-strong">{m().nav[view]}</h1>
       {:else if view === "popular"}
