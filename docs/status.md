@@ -4,15 +4,16 @@
 
 ## 지금 단계
 
-1단계 1~12번의 코드를 모두 작성하고 커밋해 푸시했다(2026-10-22). 남은 것은 첫 배포(아래 "다음 할 일")와 사용자가 손으로 해 보는 확인(아래 "남은 일")이다.
+1단계 1~12번의 코드를 모두 작성하고 커밋해 푸시했다(2026-10-22). 2026-10-25에 첫 릴리스 v0.1.0을 macOS·Windows로 공개했다. 남은 것은 설치본 확인과 첫 앱 안 업데이트(아래 "다음 할 일"), 사용자가 손으로 해 보는 확인(아래 "남은 일")이다.
 
 - **1~8번**(공개 저장소 https://github.com/nyabi-gh/Tailgate 에 올림): 터널·킬 스위치·`media://`(동영상 블록 캐시), API 계층, 계정(로그인·키체인), 검색(태그 칩·자동완성·정렬·3:4 격자·가상/무한 스크롤), 블랙리스트(e621 사이트와 같은 규칙), 뷰어(전환 효과·줌·원본·GIF·동영상·정보 패널), 즐겨찾기·투표·다운로드와 즐겨찾기 화면.
 - **9번 연결 설정**: 설정 화면의 계정·연결 칸, 직접 / WireGuard 파일 / Mullvad 로그인·위치 선택, 서버 목록 디스크 캐시, 실행 중 끊김 감지·자동 재연결, 라우트 전환 시 연결 끊기. 같은 날 검색 화면이 태그 없이 최신 게시물로 열리게 바꿨다(따로 홈 버튼 없음, report.md 3절).
 - **터널 직후 `TtlExpired`**: 원인을 재현으로 확인했다(research.md 7절). 같은 Mullvad 기기 키로 터널이 둘 떠 있으면 먼저 연결한 쪽이 응답을 받지 못한다. 앱을 한 번에 하나만 실행되게 하고, WireGuard 파일 칸에 안내를 넣었다. 조사 중 `jp-tyo-wg-002`가 핸드셰이크에 전혀 답하지 않는 것을 찾아, 답하지 않은 서버는 실행 중 후보에서 빼고 바로 다른 서버로 다시 시도하게 했다. 터널 패킷 로그(`RUST_LOG=tunnel_packets=trace`)를 남겼다.
 - **10번 설정**(report.md 12절의 네 단계): 10-1 설정 파일의 일반 칸·언어 선택·18세 확인, 10-2 칸 폭 기억·최근 검색어·블랙리스트 다시 받기, 10-3 다운로드 폴더·파일 이름 규칙, 10-4 이미지 디스크 캐시·비우기. 설정 화면 칸 순서는 일반 / 계정 / 연결 / 보기 / 다운로드 / 저장 공간.
-- **11번 배포**: 버전은 `Cargo.toml` 한곳, CI(두 플랫폼 검사), 라이선스 고지, 업데이터와 설정의 정보 칸, 배포 워크플로(주석 태그 → 초안 릴리스). macOS는 ad-hoc 서명이고 공증하지 않는다(사용자 결정, README의 `xattr` 안내). Windows 산출물은 실제 기기에서 확인할 때까지 공개하지 않는다.
+- **11번 배포**: 버전은 `Cargo.toml` 한곳, CI(두 플랫폼 검사), 라이선스 고지, 업데이터와 설정의 정보 칸, 배포 워크플로(주석 태그 → 초안 릴리스). macOS는 ad-hoc 서명이고 공증하지 않는다(사용자 결정, README의 `xattr` 안내). Windows 산출물은 실제 기기에서 확인할 때까지 공개하지 않기로 했다가 2026-10-25 사용자 결정으로 v0.1.0부터 함께 공개한다(배포 워크플로가 `-setup.exe`와 `latest.json`의 `windows-x86_64`를 만듦).
 - **12번 인기·풀·세트**: 첫 릴리스 전에 2단계에서 당겨 왔다. 인기(일·주·월), 풀 목록·풀 순서 읽기, 세트 목록·열람과 뷰어에서 넣기·빼기.
-- **푸시**: 2026-10-22 `6361ecb`까지 `origin/main`에 올렸고, CI가 두 플랫폼에서 통과했다.
+- **푸시**: 2026-10-25 `721595d`까지 `origin/main`에 올렸고, CI가 두 플랫폼에서 통과했다.
+- **첫 배포 v0.1.0**(2026-10-25): 주석 태그 `v0.1.0` → 배포 워크플로 실행 40202252434(작업 6개 통과) → 초안 → 사용자 요청으로 설치 확인 없이 공개. https://github.com/nyabi-gh/Tailgate/releases/tag/v0.1.0 (Latest). 파일은 `.dmg`, `.app.tar.gz`(+`.sig`), `x64-setup.exe`(+`.sig`), `latest.json`.
 
 ## 구현 현황
 
@@ -104,6 +105,7 @@
 | 10-22 | 12-2 풀 | `cargo test`(128: 풀 픽스처 디코딩, id 목록을 100개씩·원래 순서로·빠진 것 건너뛰기, 빈 목록은 요청 없음, 풀 검색 파라미터, 표지와 블랙리스트, 풀 열기), 검사 6개, 개발 앱(사용자가 직접) | 통과. 사용자 확인: 목록·검색·종류·정렬·무한 스크롤, 상세 격자·처음부터 읽기·위치 표시·e621에서 보기, 돌아가기 뒤 자리 유지, 정보 패널의 풀 링크. 로그에 경고·오류 없음(업데이트 확인 404 말고). 이번 실행은 `jp-tyo-wg-002`로 연결됨(전에는 핸드셰이크에 답하지 않던 서버) |
 | 10-22 | 12-3 세트 | `cargo test`(134: 세트 픽스처 디코딩, 세트 검색 파라미터(새로 만든 순은 e621 기본값), 넣기·빼기 요청, `for_select` id, 내 세트 정렬과 표지, 고칠 수 있는 세트만 고르기), 검사 6개 | 통과. 첫 실행은 키체인을 읽지 못함(`In dark wake, no UI possible`, Mac이 화면이 꺼진 절전 깨어남 상태라 허용 창을 띄울 수 없었음). 사용자가 Mac 앞에서 다시 실행: 세트 목록·상세와 넣기·빼기가 된다고 확인. 로그에 경고·오류 없음(넣기·빼기 응답이 디코딩되지 않았다면 경고가 남는다). 성공한 요청은 로그에 남지 않아 응답의 상태 코드는 보지 못함 |
 | 10-22 | 첫 푸시·CI | `2f6c25f..6361ecb`(커밋 57개) 푸시, GitHub Actions `CI` 실행 39719380272 | 통과. Windows(5분 47초): 처음으로 컴파일됨(aws-lc-sys 포함), `cargo test` 134 통과, clippy·fmt·npm 검사 통과. macOS(6분 24초): 같은 검사와 고지 파일 최신 검사 통과 |
+| 10-25 | 첫 배포 v0.1.0 | 로컬 Windows 빌드(임시 키, 파일 이름 확인), CI 40198954555, 배포 워크플로 40202252434, 초안 파일·`latest.json`, 공개 뒤 `releases/latest/download/latest.json`과 파일 주소 | 통과. 작업 6개 통과(Windows 9분 6초, macOS 9분 42초). 두 플랫폼의 `.sig`가 앱 공개 키와 같은 키 ID `8DFE5606731E91CB`. 공개 뒤 `latest.json`이 0.1.0과 `darwin-aarch64`·`windows-x86_64`를 주고 `.dmg`·`-setup.exe`·`.app.tar.gz`가 200. 설치본은 아직 실행해 보지 않음 |
 | 10-25 | 썸네일 기준에 화면 확대 반영 | `npm test`(35: `isLargeCell` 2), `npm run check`·`build`, Windows 개발 앱(사용자가 직접) | 통과. 사용자가 확대한 화면에서 썸네일이 선명해진 것을 확인 |
 | 10-25 | 화면 확대·상단 바 여백 | `npm test`(33: 확대 단계 3), `npm run check`·`build`, `cargo test settings::`(7: 보기 칸에 `pageZoom`), `cargo clippy`·`fmt`, Windows 개발 앱(사용자가 직접) | 통과. 사용자가 Windows 개발 앱에서 확대와 검색창 위치를 보고 된다고 확인 |
 | 10-23 | 태그 클릭 검색 | `npm run check`·`build`·`test`(30), 개발 앱(사용자가 직접) | 통과, 경고 0. 개발 앱에서 사용자가 직접 눌러 보고 된다고 확인. 로그에 경고·오류 없음(업데이트 확인 404 말고) |
@@ -145,14 +147,10 @@
 
 ## 다음 할 일
 
-1. **첫 배포 v0.1.0**(11-4 확인). 2026-10-25 사용자 결정으로 Windows도 함께 공개한다(배포 워크플로가 `-setup.exe`와 `latest.json`의 `windows-x86_64`를 만듦). 사용자가 직접 하는 단계와 명령:
-   - GitHub 환경 `release`를 만들고 `v*` 태그에서만 쓰게 묶는다: `gh api -X PUT repos/nyabi-gh/Tailgate/environments/release -F "deployment_branch_policy[protected_branches]=false" -F "deployment_branch_policy[custom_branch_policies]=true"`, 이어서 `gh api -X POST repos/nyabi-gh/Tailgate/environments/release/deployment-branch-policies -f name="v*" -f type=tag`.
-   - 시크릿 2개: `gh secret set TAURI_SIGNING_PRIVATE_KEY --env release --repo nyabi-gh/Tailgate < ~/.tauri/tailgate.key`, `gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --env release --repo nyabi-gh/Tailgate`(입력 창). 확인은 `gh secret list --env release --repo nyabi-gh/Tailgate`.
-   - 로컬의 남은 문서 커밋을 푸시하고 CI가 통과하면 주석 태그: `git tag -a v0.1.0 -m "<릴리스 노트>"`, `git push origin v0.1.0`. 태그 메시지가 릴리스 노트이자 앱 업데이트 시트의 노트가 된다.
-   - 배포 워크플로가 끝나면 초안의 DMG를 받아(`gh release download v0.1.0 --repo nyabi-gh/Tailgate --pattern "*.dmg" --dir ~/Downloads`) README대로 설치해 본다. Windows는 `--pattern "*-setup.exe"`로 받아 설치한다. 문제가 없으면 공개: `gh release edit v0.1.0 --repo nyabi-gh/Tailgate --draft=false`. 공개해야 앱의 업데이트 주소(`releases/latest`)에 잡힌다.
-   - 그 뒤 0.1.1을 내서 실제 앱 안 업데이트와, ad-hoc 서명이라 업데이트 뒤 키체인 허용 창이 다시 뜨는지 본다. 버전은 `src-tauri/Cargo.toml`만 올린다.
-2. 사용자 확인(위 "남은 일" 첫 항목). 첫 릴리스 전후 어느 쪽이든 사용자가 정한다.
-3. 그 뒤: 설치한 Windows 앱에서 터널(WireGuard·Mullvad)·자격 증명 관리자·동영상 재생 확인, 2단계(report.md 3절).
+1. **공개한 설치본 확인**: v0.1.0은 설치해 보지 않고 공개했다. DMG(`gh release download v0.1.0 --repo nyabi-gh/Tailgate --pattern "*.dmg" --dir ~/Downloads`)를 README대로 설치하고, Windows는 `--pattern "*-setup.exe"`로 받아 설치한다(SmartScreen 경고, 자격 증명 관리자). 설치한 Windows 앱에서 터널(WireGuard·Mullvad)·동영상 재생도 본다.
+2. **0.1.1로 첫 앱 안 업데이트 확인**: 두 플랫폼에서 업데이트가 받아지고 설치되는지, macOS는 ad-hoc 서명이라 업데이트 뒤 키체인 허용 창이 다시 뜨는지, Windows는 NSIS `passive` 설치가 앱을 닫고 진행하는지. 배포 순서: `src-tauri/Cargo.toml` 버전만 올려 커밋·푸시, CI 통과 뒤 `git tag -a v0.1.1`(메시지가 릴리스 노트이자 업데이트 시트의 노트) → `git push origin v0.1.1` → 초안 확인 → `gh release edit v0.1.1 --repo nyabi-gh/Tailgate --draft=false`(공개해야 `releases/latest`에 잡힌다).
+3. 사용자 확인(위 "남은 일" 첫 항목).
+4. 그 뒤: 2단계(report.md 3절).
 
 ## 개발 메모
 
