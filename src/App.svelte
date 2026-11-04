@@ -49,7 +49,7 @@
   } from "./lib/sets.svelte";
   import { checkOnceAutomatically } from "./lib/updates.svelte";
   import { isEditable, onKeys } from "./lib/shortcuts";
-  import { closeViewer, openPost, viewer } from "./lib/viewer.svelte";
+  import { closeViewer, isViewing, openPost, viewer } from "./lib/viewer.svelte";
   import type { View } from "./lib/views";
 
   let view = $state<View>("search");
@@ -97,6 +97,19 @@
       transitionId = id;
     });
     transitionId = null;
+    for (const start of deferredStarts.values()) start();
+    deferredStarts.clear();
+  }
+
+  /**
+   * Starts that would empty the list under the viewer wait until it closes (and has shrunk back
+   * into the thumbnail), so the post on screen stays. The latest per list wins.
+   */
+  const deferredStarts = new Map<PostList, () => void>();
+
+  function restart(list: PostList, start: () => void) {
+    if (isViewing(list)) deferredStarts.set(list, start);
+    else start();
   }
 
   function onkeydown(event: KeyboardEvent) {
@@ -167,8 +180,9 @@
     const now = signedInAs;
     untrack(() => {
       if (previousAccount !== undefined && previousAccount !== now) {
-        if (tagSearch.query !== null) startSearch(tagSearch.query);
-        if (now !== null && favorites.query !== null) startFavorites();
+        const query = tagSearch.query;
+        if (query !== null) restart(tagSearch, () => startSearch(query));
+        if (now !== null && favorites.query !== null) restart(favorites, startFavorites);
         markMySetsStale();
       }
       previousAccount = now;

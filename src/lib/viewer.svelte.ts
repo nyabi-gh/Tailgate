@@ -51,6 +51,11 @@ export function openPost(from: PostList, id: number) {
   ensureAhead();
 }
 
+/** Whether the viewer is stepping through this list. */
+export function isViewing(from: PostList): boolean {
+  return openId !== null && list === from;
+}
+
 export function closeViewer() {
   openId = null;
 }
