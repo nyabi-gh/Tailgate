@@ -15,6 +15,7 @@ const ko: Messages = {
     connecting: "연결 중…",
     tunnel: (relay) => `VPN · ${relay}`,
     failed: "VPN 연결 안 됨",
+    openSettings: "설정 열기",
     failure: {
       credentialStore: "저장된 VPN 설정을 읽지 못했습니다.",
       settings: "설정 파일을 읽지 못했습니다.",

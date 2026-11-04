@@ -6,6 +6,7 @@
   import type { ListState } from "../lib/lists.svelte";
   import { mediaUrl } from "../lib/media";
   import type { ApiErrorCode } from "../lib/posts";
+  import ConnectionWait from "./ConnectionWait.svelte";
 
   /** A pool or a set as a row: its first post as the cover, and a line about it. */
   type Row = { id: number; name: string; detail: string; cover: string | null; note?: string };
@@ -65,7 +66,7 @@
         {:else if list.done}
           <p>{empty}</p>
         {:else if !canLoadRemote()}
-          <p>{m().search.waiting}</p>
+          <ConnectionWait />
         {:else}
           <p>{m().search.loading}</p>
         {/if}

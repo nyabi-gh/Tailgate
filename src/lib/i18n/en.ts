@@ -13,6 +13,7 @@ const en = {
     connecting: "Connecting…",
     tunnel: (relay: string) => `VPN · ${relay}`,
     failed: "VPN not connected",
+    openSettings: "Open Settings",
     failure: {
       credentialStore: "Could not read the saved VPN settings.",
       settings: "Could not read the settings file.",

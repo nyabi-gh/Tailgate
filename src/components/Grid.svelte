@@ -9,6 +9,7 @@
   import type { ApiErrorCode, Post } from "../lib/posts";
   import type { PostList } from "../lib/search.svelte";
   import { pageZoom } from "../lib/settings.svelte";
+  import ConnectionWait from "./ConnectionWait.svelte";
   import Thumb from "./Thumb.svelte";
 
   let {
@@ -107,7 +108,7 @@
       {:else if list.done}
         <p>{empty}</p>
       {:else if !canLoadRemote()}
-        <p>{m().search.waiting}</p>
+        <ConnectionWait />
       {:else}
         <p>{m().search.loading}</p>
       {/if}

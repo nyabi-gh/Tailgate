@@ -50,9 +50,10 @@
   import { checkOnceAutomatically } from "./lib/updates.svelte";
   import { isEditable, onKeys } from "./lib/shortcuts";
   import { closeViewer, isViewing, openPost, viewer } from "./lib/viewer.svelte";
-  import type { View } from "./lib/views";
+  import { setOpenSettings, type View } from "./lib/views";
 
   let view = $state<View>("search");
+  setOpenSettings(() => (view = "settings"));
   let tags = $state<string[]>([]);
   let tagInput: TagInput | undefined = $state();
   let searchGrid: Grid | undefined = $state();
