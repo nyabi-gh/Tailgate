@@ -118,6 +118,7 @@ const ko: Messages = {
     wireGuard: {
       file: "파일",
       none: "가져온 파일 없음",
+      saved: "저장된 설정",
       choose: "파일 선택…",
       replace: "다른 파일…",
       server: "서버",

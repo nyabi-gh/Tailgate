@@ -350,7 +350,9 @@
       {#if details?.mode === "wireGuard"}
         <div class={row}>
           <span class={label}>{m().settings.wireGuard.file}</span>
-          <span class="truncate text-dim">{details.wireguard?.fileName ?? m().settings.wireGuard.none}</span>
+          <span class="truncate text-dim">{details.wireguard
+              ? (details.wireguard.fileName ?? m().settings.wireGuard.saved)
+              : m().settings.wireGuard.none}</span>
           <button class={action} disabled={busy} onclick={() => change(importWireGuardConfig)}>
             {details.wireguard ? m().settings.wireGuard.replace : m().settings.wireGuard.choose}
           </button>

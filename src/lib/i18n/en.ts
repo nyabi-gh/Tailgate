@@ -116,6 +116,7 @@ const en = {
     wireGuard: {
       file: "File",
       none: "None imported",
+      saved: "Saved configuration",
       choose: "Choose File…",
       replace: "Choose Another…",
       server: "Server",

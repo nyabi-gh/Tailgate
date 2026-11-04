@@ -112,7 +112,9 @@ pub enum ConnectionMode {
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WireGuardSummary {
-    pub file_name: String,
+    /// `None` when the configuration was found in the credential store on a first run, with no
+    /// settings file left to name it.
+    pub file_name: Option<String>,
     pub endpoint: String,
 }
 

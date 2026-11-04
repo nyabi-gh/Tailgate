@@ -406,7 +406,8 @@ impl Network {
                 let relay = settings
                     .wireguard
                     .as_ref()
-                    .and_then(|summary| Path::new(&summary.file_name).file_stem())
+                    .and_then(|summary| summary.file_name.as_deref())
+                    .and_then(|name| Path::new(name).file_stem())
                     .map_or(config.endpoint, |stem| stem.to_string_lossy().into_owned());
                 Ok(Opened::Tunnel { tunnel, relay })
             }
@@ -414,26 +415,39 @@ impl Network {
         }
     }
 
-    /// The saved settings, or on the first run what the app did before it had any: the tunnel
-    /// when a Mullvad device is saved, direct otherwise. An unreadable file is an error, not a
-    /// first run.
+    /// The saved settings, or on the first run what the saved secrets point to. An unreadable
+    /// file is an error, not a first run.
     async fn resolve_settings(&self) -> Result<ConnectionSettings, ConnectError> {
         let resolved = match self.settings.connection() {
             Ok(Some(settings)) => Ok(settings),
-            Ok(None) => read_secret(secrets::MULLVAD_DEVICE)
-                .await
-                .map(|device| {
-                    ConnectionSettings::new(if device.is_some() {
-                        ConnectionMode::Mullvad
-                    } else {
-                        ConnectionMode::Direct
-                    })
-                })
-                .map_err(ConnectError::from),
+            Ok(None) => self.first_run_settings().await,
             Err(error) => Err(ConnectError::Settings(error)),
         };
         *self.effective.lock().expect("settings lock poisoned") = resolved.as_ref().ok().cloned();
         resolved
+    }
+
+    /// A settings file can go missing (a cleaner app, a reinstall) while the keychain keeps the
+    /// tunnel's secrets, so direct only once neither a Mullvad device nor a WireGuard
+    /// configuration is saved. Changing the mode keeps the other's secret, so with both the last
+    /// one used is unknown; Mullvad, the rule from before WireGuard was looked at, goes first.
+    async fn first_run_settings(&self) -> Result<ConnectionSettings, ConnectError> {
+        if read_secret(secrets::MULLVAD_DEVICE).await?.is_some() {
+            return Ok(ConnectionSettings::new(ConnectionMode::Mullvad));
+        }
+        let Some(text) = read_secret(secrets::WIREGUARD_CONFIG).await? else {
+            return Ok(ConnectionSettings::new(ConnectionMode::Direct));
+        };
+        let mut settings = ConnectionSettings::new(ConnectionMode::WireGuard);
+        // A damaged configuration is reported when the tunnel starts, as with saved settings.
+        settings.wireguard =
+            TunnelConfig::parse_wg_quick(&text)
+                .ok()
+                .map(|config| WireGuardSummary {
+                    file_name: None,
+                    endpoint: config.endpoint,
+                });
+        Ok(settings)
     }
 
     async fn open_mullvad(self: &Arc<Self>, location: &str) -> Result<Opened, ConnectError> {
@@ -588,8 +602,7 @@ impl Network {
         let summary = WireGuardSummary {
             file_name: path
                 .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_default(),
+                .map(|name| name.to_string_lossy().into_owned()),
             endpoint: config.endpoint,
         };
         self.change_settings(|settings| {
@@ -911,6 +924,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_first_run_with_a_saved_wireguard_configuration_uses_it() {
+        let _store = mock_store().await;
+        entry(secrets::WIREGUARD_CONFIG)
+            .set_password(CONFIG)
+            .unwrap();
+        let Fixture { network, .. } = fixture(None, vec![]).await;
+        let settings = network.resolve_settings().await.unwrap();
+        assert_eq!(settings.mode, ConnectionMode::WireGuard);
+        assert_eq!(
+            settings.wireguard,
+            Some(WireGuardSummary {
+                file_name: None,
+                endpoint: "127.0.0.1:9".into(),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn a_first_run_with_a_damaged_wireguard_configuration_stays_blocked() {
+        let _store = mock_store().await;
+        entry(secrets::WIREGUARD_CONFIG)
+            .set_password("[Interface]\n")
+            .unwrap();
+        let Fixture { network, .. } = fixture(None, vec![]).await;
+        running(&network);
+        assert_eq!(settles(&network).await, failed(FailureCode::SavedConfig));
+        assert!(!reaches_local_server(&network).await);
+        assert_eq!(network.details().mode, Some(ConnectionMode::WireGuard));
+    }
+
+    #[tokio::test]
+    async fn a_first_run_with_both_saved_uses_mullvad() {
+        let _store = mock_store().await;
+        save_device();
+        entry(secrets::WIREGUARD_CONFIG)
+            .set_password(CONFIG)
+            .unwrap();
+        let Fixture { network, .. } = fixture(None, vec![]).await;
+        let settings = network.resolve_settings().await.unwrap();
+        assert_eq!(settings.mode, ConnectionMode::Mullvad);
+    }
+
+    #[tokio::test]
     async fn stays_blocked_when_the_credential_store_fails() {
         let _store = mock_store().await;
         let entry = entry(secrets::MULLVAD_DEVICE);
@@ -1068,7 +1124,7 @@ mod tests {
         assert_eq!(
             saved.wireguard,
             Some(WireGuardSummary {
-                file_name: "se-sto-wg-001.conf".into(),
+                file_name: Some("se-sto-wg-001.conf".into()),
                 endpoint: "127.0.0.1:9".into(),
             })
         );

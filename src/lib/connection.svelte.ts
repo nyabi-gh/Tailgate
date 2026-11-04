@@ -28,7 +28,7 @@ export type ConnectionMode = "direct" | "wireGuard" | "mullvad";
 export type ConnectionDetails = {
   mode: ConnectionMode | null;
   location: string;
-  wireguard: { fileName: string; endpoint: string } | null;
+  wireguard: { fileName: string | null; endpoint: string } | null;
   mullvadDevice: string | null;
 };
 
