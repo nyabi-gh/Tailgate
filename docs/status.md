@@ -1,10 +1,10 @@
 # 진행 상황
 
-2026-11-02 기준. 계획은 [report.md](report.md), 근거는 [research.md](research.md). 상태는 이 문서에만 적는다.
+2026-11-04 기준. 계획은 [report.md](report.md), 근거는 [research.md](research.md). 상태는 이 문서에만 적는다.
 
 ## 지금 단계
 
-1단계 1~12번의 코드를 모두 작성하고 커밋해 푸시했다(2026-10-22). 2026-10-25에 첫 릴리스 v0.1.0을 macOS·Windows로 공개했다. 2026-11-02 저장소를 실수로 지워 다시 만들고, 서명 키를 새로 만들어 v0.1.0을 다시 공개했다(아래 "저장소 다시 만들기"). 남은 것은 설치본 확인과 첫 앱 안 업데이트(아래 "다음 할 일"), 사용자가 손으로 해 보는 확인(아래 "남은 일")이다.
+1단계 1~12번의 코드를 모두 작성하고 커밋해 푸시했다(2026-10-22). 2026-10-25에 첫 릴리스 v0.1.0을 macOS·Windows로 공개했다. 2026-11-02 저장소를 실수로 지워 다시 만들고, 서명 키를 새로 만들어 v0.1.0을 다시 공개했다(아래 "저장소 다시 만들기"). 2026-11-04 종합 검토를 하고, 그중 0.1.1 전에 고칠 항목을 고쳤다(아래 "0.1.1 전에 고친 것"). 남은 것은 0.1.1 공개 절차(설치본 확인과 첫 앱 안 업데이트, 아래 "다음 할 일"), 사용자가 손으로 해 보는 확인(아래 "남은 일")이다.
 
 - **1~8번**(공개 저장소 https://github.com/nyabi-gh/Tailgate 에 올림): 터널·킬 스위치·`media://`(동영상 블록 캐시), API 계층, 계정(로그인·키체인), 검색(태그 칩·자동완성·정렬·3:4 격자·가상/무한 스크롤), 블랙리스트(e621 사이트와 같은 규칙), 뷰어(전환 효과·줌·원본·GIF·동영상·정보 패널), 즐겨찾기·투표·다운로드와 즐겨찾기 화면.
 - **9번 연결 설정**: 설정 화면의 계정·연결 칸, 직접 / WireGuard 파일 / Mullvad 로그인·위치 선택, 서버 목록 디스크 캐시, 실행 중 끊김 감지·자동 재연결, 라우트 전환 시 연결 끊기. 같은 날 검색 화면이 태그 없이 최신 게시물로 열리게 바꿨다(따로 홈 버튼 없음, report.md 3절).
@@ -12,7 +12,7 @@
 - **10번 설정**(report.md 12절의 네 단계): 10-1 설정 파일의 일반 칸·언어 선택·18세 확인, 10-2 칸 폭 기억·최근 검색어·블랙리스트 다시 받기, 10-3 다운로드 폴더·파일 이름 규칙, 10-4 이미지 디스크 캐시·비우기. 설정 화면 칸 순서는 일반 / 계정 / 연결 / 보기 / 다운로드 / 저장 공간.
 - **11번 배포**: 버전은 `Cargo.toml` 한곳, CI(두 플랫폼 검사), 라이선스 고지, 업데이터와 설정의 정보 칸, 배포 워크플로(주석 태그 → 초안 릴리스). macOS는 ad-hoc 서명이고 공증하지 않는다(사용자 결정, README의 `xattr` 안내). Windows 산출물은 실제 기기에서 확인할 때까지 공개하지 않기로 했다가 2026-10-25 사용자 결정으로 v0.1.0부터 함께 공개한다(배포 워크플로가 `-setup.exe`와 `latest.json`의 `windows-x86_64`를 만듦).
 - **12번 인기·풀·세트**: 첫 릴리스 전에 2단계에서 당겨 왔다. 인기(일·주·월), 풀 목록·풀 순서 읽기, 세트 목록·열람과 뷰어에서 넣기·빼기.
-- **푸시**: 2026-11-02 `9851b23`까지 `origin/main`에 올렸다.
+- **푸시**: 2026-11-04 "0.1.1 전에 고친 것"까지 `origin/main`에 올렸다.
 - **첫 배포 v0.1.0**(2026-10-25): 주석 태그 `v0.1.0` → 배포 워크플로 실행 40202252434(작업 6개 통과) → 초안 → 사용자 요청으로 설치 확인 없이 공개. 이 릴리스는 저장소와 함께 지워졌다.
 - **저장소 다시 만들기**(2026-11-02): 같은 이름의 공개 저장소를 만들고 `main`을 푸시했다. 이슈·Release·환경·시크릿은 되살릴 수 없었다. `release` 환경(`v*` 태그만)을 다시 만들었고, 첫 서명 키(`8DFE5606731E91CB`)는 암호를 잃어 새 키 `0FB5674FAAE141FD`를 만들어 시크릿 두 개로 등록하고 `tauri.conf.json`의 `pubkey`를 바꿨다(`9851b23`). 옛 키를 믿는 첫 v0.1.0 설치본은 앱 안 업데이트를 받을 수 없다. 주석 태그 `v0.1.0`을 같은 노트로 `9851b23`에 다시 찍어 배포 워크플로 41406918483(작업 6개 통과) → 초안 → 사용자 요청으로 설치 확인 없이 공개. https://github.com/nyabi-gh/Tailgate/releases/tag/v0.1.0 (Latest). 파일은 `.dmg`, `.app.tar.gz`(+`.sig`), `x64-setup.exe`(+`.sig`), `latest.json`.
 
@@ -33,7 +33,7 @@
 | 실패 코드 | `network.rs` → `connection.svelte.ts` → i18n | report.md 6.4절의 11가지와 설정 변경 오류 |
 | 타임아웃 | `network.rs`, `tunnel/` | report.md 6.5절 |
 | `media://` | `media/`, `media.ts`, `storage.ts` | 이미지는 통째로, 동영상은 1MB 블록 캐시(`media/blocks.rs`, 메모리 256MB, 다음 블록 미리 받기)로 응답. report.md 7.2절. 이미지는 디스크 캐시(`media/disk.rs`, 기본 1GB, 오래 쓰지 않은 것부터 지움)에서 먼저 찾고, 없으면 받아서 남김. report.md 7.3절 |
-| 라이선스 | `LICENSE`, `scripts/notices.mjs`, `src-tauri/about.toml`, `src-tauri/resources/THIRD-PARTY-NOTICES.html` | MIT. 배포물 고지는 `npm run notices`로 만들어 커밋하고 번들 리소스로 넣음(Tailgate·Wanted Sans·웹 패키지 7개·크레이트 344개, report.md 10절). CI(macOS)가 최신인지 확인. 앱에서 여는 버튼은 11-3 |
+| 라이선스 | `LICENSE`, `scripts/notices.mjs`, `src-tauri/about.toml`, `src-tauri/resources/THIRD-PARTY-NOTICES.html` | MIT. 배포물 고지는 `npm run notices`로 만들어 커밋하고 번들 리소스로 넣음(Tailgate·Wanted Sans·웹 패키지 7개·크레이트 355개, report.md 10절). CI(macOS)가 최신인지 확인. 앱에서 여는 버튼은 11-3 |
 | API 계층 | `api/`, `examples/api_probe.rs` | posts 검색(`PostSearch`, 100개씩, `b<id>` 또는 페이지 번호, 중복 제거), 단일 게시물, `users/me`, 자동완성. 요청 시작 간격 1초, UA, Basic 인증(자격 증명 설정 자리만, 저장은 4번), 429·503 재시도, 오류 코드. 8번에서 POST·DELETE(폼 본문), 즐겨찾기·투표, 내 즐겨찾기 목록 추가 |
 | 계정 | `account.rs`, `account.svelte.ts`, `SignInSheet.svelte` | 로그인 시트(사이드바), e621 확인 뒤 키체인 `e621-account`에 저장, 로그아웃, 시작 시 복원하고 연결이 열리면 `/users/me`로 확인, 401이면 저장된 키를 지우고 "다시 로그인". UA는 API와 `media://` 모두 로그인한 이름. API 키 발급 페이지는 `tauri-plugin-opener`로 연다(권한은 7번에서 http/https 전체, 8번에서 파일 위치 열기 추가). 로그아웃은 실제 앱에서 안 해 봄 |
 | 검색 | `search.rs`, `search.svelte.ts`, `layout.ts`, `tags.ts`, `TagInput`, `SortMenu`, `Grid`, `Thumb` | 앱을 켜면 태그 없는 검색(최신 게시물)으로 시작, 태그를 모두 지우고 검색해도 같음(2026-10-21, 빈 검색 화면 대신), 태그 칩(카테고리 색: 자동완성과 첫 결과에서 앎, 메타태그는 meta 색, 제외는 취소선), 자동완성(3글자, 300ms, 접두어 캐시), 정렬 메뉴(`order:` 바꿈), 3:4 같은 크기 칸 격자(틈 3px, 그림은 칸을 채우게 자름. 2026-10-21 justified에서 바꿈), 가상 스크롤(±1화면), 남은 1.5화면에서 다음 페이지, ⌘/Ctrl+휠·슬라이더로 칸 폭 100~360(기본 180, 240 이상이면 `sample`(화면 확대를 곱한 폭으로, 2026-10-25 `isLargeCell`), 멈춘 뒤 0.5초에 `settings.json`에 저장해 다음 실행에도 유지), 최근 검색어(태그 있는 검색만 10개, 빈 검색창에 포커스하면 목록, ↑/↓로 고르고 Enter, 아무것도 고르지 않은 Enter는 지금처럼 최신 게시물), 로딩·빈 결과·오류·다시 시도, 계정이 바뀌면 다시 검색, 썸네일을 누르면 뷰어 |
@@ -44,8 +44,8 @@
 | 뷰어 | `Viewer`, `MediaStage`, `InfoPanel`, `viewer.svelte.ts`, `zoom.ts`, `media.ts` | 썸네일에서 커지며 열리고 그 자리로 닫힘(View Transitions), 이미지 샘플 → 확대하거나 요청하면 원본, GIF는 원본, 동영상 720p 우선·반복·음소거 시작, 휠·핀치 확대·끌기·더블클릭 맞춤/1:1, 이전·다음(끝 5개 전에 다음 페이지), 정보 패널(점수·즐겨찾기·등급·파일·업로더·출처·카테고리별 태그), 태그를 누르면 뷰어를 닫고 그 태그 하나로 새 검색(2026-10-23, 최근 검색어에도 남음), ←/→·Esc·I·0 |
 | 즐겨찾기·투표·다운로드 | `api/`, `search.rs`, `download.rs`, `download/name.rs`, `downloadSettings.ts`, `actions.svelte.ts`, `search.svelte.ts`, `InfoPanel`, `Toasts`, `App` | 뷰어 패널의 ♥·▲·▼·↓와 F·↑·↓·D(누르면 바로 반영, e621 응답으로 맞추고 실패하면 되돌림), 로그인 안 했으면 로그인 시트, 다운로드는 설정의 폴더(기본 `~/Downloads/Tailgate`)에 이름 규칙(기본 `{id}_{artist}`, report.md 3절)대로 `.part`를 거쳐 저장·진행률·"Finder에서 보기", 사이드바 즐겨찾기 화면(즐겨찾기한 순서, 블랙리스트 적용). 검색과 즐겨찾기는 화면마다 따로 열려 결과와 스크롤을 기억 |
 | 버전·CI | `src-tauri/Cargo.toml`, `.github/workflows/ci.yml` | 버전은 `Cargo.toml` 한곳(`tauri.conf.json`·`package.json`에서 뺌). main 푸시·PR마다 macOS·Windows에서 검사 6개, Rust 1.98.1 고정, 액션은 SHA 고정(11-1). 2026-10-22 첫 실행에서 두 플랫폼 모두 통과 |
-| 업데이터·정보 칸 | `update.rs`, `commands.rs`, `settings.rs`, `updates.svelte.ts`, `UpdateSheet.svelte`, `Settings.svelte` | `tauri-plugin-updater`(시스템 프록시 끔)를 Rust 명령으로만 씀. 확인·받기는 앱 SOCKS를 거침. 연결이 처음 열리면 실행마다 한 번 자동 확인(설정 `updates.checkAutomatically`, 기본 켬), 새 버전이면 시트(버전·릴리스 노트·진행률·[다시 시작]). 설정 맨 아래 정보 칸: 버전·[업데이트 확인]·자동 확인·오픈 소스 라이선스(번들 리소스를 기본 브라우저로)·소스 코드 링크. `pubkey`는 사용자가 만든 키(ID `0FB5674FAAE141FD`, 개인 키 `~/.tauri/tailgate.key`, 암호 있음, 사용자가 백업) |
-| 배포 워크플로 | `.github/workflows/release.yml`, `ci.yml` | 주석 태그 `v*` → 검사(`ci.yml` 재사용) → macOS 빌드(ad-hoc 서명, 공증 안 함), 서명 검사, `latest.json`, Release 초안. Windows는 워크플로 산출물만(report.md 10절). 설치 안내는 `README.md`(`xattr`). **아직 한 번도 돌지 않음**: 시크릿이 없고 푸시 전(11-4) |
+| 업데이터·정보 칸 | `update.rs`, `commands.rs`, `settings.rs`, `updates.svelte.ts`, `UpdateSheet.svelte`, `Settings.svelte` | `tauri-plugin-updater`(시스템 프록시 끔)를 Rust 명령으로만 씀. 확인·받기는 앱 SOCKS를 거침. 연결이 처음 열리면 실행마다 한 번 자동 확인(설정 `updates.checkAutomatically`, 기본 켬), 새 버전이면 시트(버전·릴리스 노트·진행률·[다시 시작]). 설정 맨 아래 정보 칸: 버전·[업데이트 확인]·자동 확인·오픈 소스 라이선스(번들 리소스를 기본 브라우저로)·소스 코드 링크. `pubkey`는 사용자가 만든 키(ID `0FB5674FAAE141FD`, 개인 키 `~/.tauri/tailgate.key`, 암호 있음, 사용자가 백업). `requireSignedVersion`을 켜 서명에 담긴 버전이 `latest.json`의 버전과 같아야 설치함(버전 없는 서명은 거절). 플러그인의 `zip` 기능은 뺌(Windows `.zip`·Linux AppImage용이고 이 앱은 `-setup.exe`를 그대로 씀) |
+| 배포 워크플로 | `.github/workflows/release.yml`, `ci.yml` | 주석 태그 `v*` → 검사(`ci.yml` 재사용) → macOS 빌드(ad-hoc 서명, 공증 안 함)·서명 검사, Windows NSIS 빌드 → 두 플랫폼의 `latest.json`, Release 초안. 버전에 `-`가 있으면(`0.2.0-beta.1`) 사전 릴리스로 만들어 `releases/latest`(업데이트 주소)가 되지 않음. 설치 안내는 `README.md`(`xattr`, SmartScreen, 첫 v0.1.0 설치자 다시 설치). v0.1.0 배포에 두 번 씀(위 "첫 배포", "저장소 다시 만들기") |
 
 ## 재검토에서 고친 것 (2026-10-19)
 
@@ -64,6 +64,20 @@
 | 11 | ⌘K가 macOS에서 Ctrl K도 가로채고, Caps Lock·한글 입력에서 안 먹을 수 있음 | 플랫폼별 수식키, 물리 키(`KeyK`)로 판별 | 타입 검사만. 키 입력 자동화 권한이 없어 실제 입력은 못 해 봄 |
 | 12 | 빌드 경고, clippy 경고 2건, rustfmt 미적용, 안 쓰는 `ipnetwork`, `tunnel_probe`의 UA 중복, `index.html`의 남은 `no-referrer` | 정리 | 경고 0 |
 | 13 | `LICENSE` 없음 | MIT 추가 | |
+
+## 0.1.1 전에 고친 것 (2026-11-04)
+
+2026-11-04 종합 검토(H·M 번호는 그 보고서의 것)에서 0.1.1 전에 고치기로 한 항목.
+
+| # | 문제 | 고친 방법 | 확인 |
+|---|---|---|---|
+| H1 | 뷰어 위 로그인 시트에 입력한 글자가 뷰어 단축키로 실행됨(`d` = 다운로드), 열린 시트 뒤에서 ⌘K·`/`가 화면을 바꿈 | `shortcuts.ts`의 처리기 하나가 계층 순서로 나눔: 화면 확대(어디서나) → 열린 모달 `<dialog>`가 있으면 멈춤 → 뷰어(입력 요소 대상은 무시) → 앱 | `npm run check`·`build`. 실제 앱에서는 사용자가 보지 않음 |
+| M11 | 뷰어 F·↑·↓를 누르고 있으면 키 반복으로 계속 토글되고 요청이 쌓임 | 반복 키는 ←/→만 실행 | 위와 같음 |
+| M7 | 뷰어에서 로그인하면 검색이 다시 시작되어 뷰어가 빈 채 남음 | 뷰어가 보고 있는 목록의 재시작은 뷰어가 닫힌 뒤로 미룸(`App.svelte`의 `restart`). 그동안 뷰어의 ♥·투표 표시는 로그인 전 값. 로그인을 부른 동작은 이어서 하지 않음 | 위와 같음 |
+| M9 | 연결이 실패해도 격자·목록이 "연결을 기다리는 중…" | `ConnectionWait.svelte`: 실패 원인과 [다시 연결]·[설정 열기] | 위와 같음 |
+| M2 | 첫 실행 규칙이 키체인의 `wireguard-config`를 보지 않아 직접 연결로 시작 | Mullvad 기기 → WireGuard 설정 → 둘 다 없을 때만 직접. 둘 다 있으면 Mullvad. WireGuard 요약의 `fileName`은 없을 수 있고 설정 화면은 "저장된 설정"(report.md 6.2절) | `cargo test`(137): 첫 실행 테스트 3개 추가, 그중 2개는 옛 규칙에서 실패 확인 |
+| 배포 | 업데이터 `zip` 기능(취약점 공지가 있는 zip 4.6.1, 쓰지 않음), 버전이 서명에 묶이지 않음, 사전 릴리스도 `releases/latest`가 됨 | `zip` 기능 뺌(lock은 삭제만, 고지 크레이트 355개), `requireSignedVersion` 켬, 버전에 `-`가 있으면 `--prerelease` | 플러그인 소스 대조, 공개된 두 `.sig`의 trusted comment에 `version:0.1.0`, 워크플로 YAML 파싱과 분기 셸 실행 |
+| 문서 | 릴리스 절차에 `Cargo.lock` 없음, 낡은 행, 첫 v0.1.0 설치자 안내 없음 | 이 문서의 절차·36·47·48행, 123행 삭제, README에 다시 설치 안내 | |
 
 ## 검증 기록
 
@@ -111,16 +125,20 @@
 | 10-25 | 썸네일 기준에 화면 확대 반영 | `npm test`(35: `isLargeCell` 2), `npm run check`·`build`, Windows 개발 앱(사용자가 직접) | 통과. 사용자가 확대한 화면에서 썸네일이 선명해진 것을 확인 |
 | 10-25 | 화면 확대·상단 바 여백 | `npm test`(33: 확대 단계 3), `npm run check`·`build`, `cargo test settings::`(7: 보기 칸에 `pageZoom`), `cargo clippy`·`fmt`, Windows 개발 앱(사용자가 직접) | 통과. 사용자가 Windows 개발 앱에서 확대와 검색창 위치를 보고 된다고 확인 |
 | 10-23 | 태그 클릭 검색 | `npm run check`·`build`·`test`(30), 개발 앱(사용자가 직접) | 통과, 경고 0. 개발 앱에서 사용자가 직접 눌러 보고 된다고 확인. 로그에 경고·오류 없음(업데이트 확인 404 말고) |
+| 11-04 | 0.1.1 전 수정 | `cargo test`(137), `cargo clippy --all-targets -D warnings`, `cargo fmt --check`, `npm test`(35), `npm run check`, `npm run build`, 개발 앱 실행 | 검사 모두 통과, 경고 0. 개발 앱은 직접 연결로 시작했고 e621 연결이 끊겨(reset) 화면 동작은 확인하지 못함. 이 Mac에 Tailgate의 키체인 항목 4개가 모두 없고 `Application Support`·캐시 폴더도 이번 실행에서 새로 생김(저장된 것이 없으면 직접 연결이 규칙). 사용자가 화면 확인 없이 마무리하기로 함 |
 | 10-21 | 최신순 첫 화면 | `cargo test`(100: 빈 검색이 `tags=`와 `b<id>` 커서로 요청), `npm run check`·`build`·`test`, 실제 앱(Vite 다시 불러오기) | 통과. 앱이 최신 게시물 격자로 열리고 정렬 "최신순" 표시. 같은 실행에서 쉬는 터널의 건강 검사가 2분마다 핸드셰이크를 마침(로그 `tunnel health check: handshake completed`) |
 
 ## 남은 일
+
+- **0.1.1 전 수정의 화면 확인**: 뷰어 위 로그인 시트에 `d`·`f`·←/→·Esc 입력, 시트 뒤 ⌘K·`/`, 뷰어에서 F 길게 누르기, 뷰어에서 로그인한 뒤 같은 게시물이 남고 닫으면 검색이 새로 고쳐지는지, 연결 실패 때 격자의 안내와 두 버튼, 첫 실행 WireGuard의 "저장된 설정" 표시. 실제 앱에서 해 보지 않았다.
+- **이 Mac의 저장 상태**(2026-11-04 발견): 키체인 항목(`mullvad-account`·`mullvad-device`·`e621-account`·`wireguard-config`)과 설정·캐시 폴더가 없다. 원인은 모른다. 개발 앱으로 e621을 보려면 설정 화면에서 Mullvad 로그인(또는 `.conf` 가져오기)과 e621 로그인을 다시 해야 한다. Mullvad 계정에는 옛 기기 `divine condor`가 남아 있을 수 있다(로그인할 때 남은 기기는 키체인에 있어야 지운다).
+- **종합 검토의 다음 작은 판 항목**: M1 무효가 된 Mullvad 기기의 끝없는 재시도, M3·M4 전부 블랙리스트인 검색의 자동 받기와 잠금, M5 풀·세트 열기 순서, M6 계정 변경 뒤 인기·풀·세트 갱신, M8 즐겨찾기 새로 고침, M10 뷰어 포커스, M12 기본 우클릭 메뉴, M13 Windows 자격 증명 크기, 접근성(대비·포커스), 보안 보강(Mullvad 클라이언트 프록시, SOCKS 인증, 서명을 빌드와 분리, 웹뷰 이동 막기, 불변 릴리스·태그 규칙), 그리고 정리(큰 파일 나누기, 틀린 주석, 테스트 빈틈, Dependabot·cargo-deny·SECURITY.md).
 
 - **사용자 확인(9·10번)**: 아래 9번 항목과, 10번의 18세 확인·언어·최근 검색어·썸네일 크기·다운로드 칸·저장 공간 칸 항목. 9번: 방식 바꾸기(직접으로 바꾸면 e621이 막히는지, 다시 Mullvad), 위치 바꾸기, "다시 연결", e621 로그아웃·로그인(설정 칸에서), Wi-Fi를 3분 넘게 껐다 켜서 끊김 감지·자동 재연결, 재연결 뒤 썸네일 다시 받기. Mullvad 로그아웃·로그인(기기 `divine condor`가 지워지고 새 기기가 등록됨)과 `.conf` 가져오기(mullvad.net에서 만들면 기기 칸을 하나 씀)는 원할 때만.
 - 끊김 감지는 테스트로 고정하지 못했다(실제 WireGuard 상대가 필요). 실제 앱에서 Wi-Fi를 끄는 방법으로만 확인한다. macOS 잠자기 동안 단조 시계가 멈추는 경우의 동작도 확인하지 않았다.
 - 18세 확인 화면의 다크 모드, 저장하지 못했을 때의 알림, 실제 버튼 클릭([18세 이상입니다], [종료])과 설정 화면의 언어 버튼 클릭은 손으로 해 보지 않았다(임시 코드로 같은 함수를 불렀다). 최근 검색어 목록의 클릭·키보드 선택, 설정 화면의 썸네일 크기 슬라이더와 [지우기]도 같다. 사용자 확인 때 함께 본다.
 - 저장 공간 칸(사용량 표시, [비우기], 최대 크기 바꾸기)은 화면으로 보지도, 손으로 해 보지도 않았다(확인 도중 사용자 요청으로 멈춤). 최대 크기를 낮췄을 때 실제 폴더가 줄어드는 것도 테스트로만 확인.
 - 업데이트 실패 표시(서버에 닿지 못함, 서명 불일치), 받는 중 [나중에]로 닫은 뒤 정보 칸에서 다시 여는 경로, Windows의 NSIS `passive` 설치는 해 보지 않았다. 다크 모드의 업데이트 시트·정보 칸도 못 봤다.
-- 첫 공개 릴리스 전에는 `latest.json`이 없어(404) 자동 확인이 조용히 실패하고, 정보 칸에서 직접 확인하면 "업데이트를 확인하지 못했습니다"가 뜬다.
 - 인기·풀·세트 화면의 다크 모드, 목록을 받다 실패했을 때의 오류 표시와 [다시 시도], 세트 메뉴의 실패 되돌림은 손으로 해 보지 않았다(테스트와 코드로만). 세트 넣기·빼기 응답의 상태 코드는 로그에 남지 않아 보지 못했다(디코딩은 됐다).
 - 컴퓨터의 시간대 이름을 e621이 모르면 오류 없이 미국 동부 시간으로 읽는다. 표준 IANA 이름(`Intl`이 주는 값)이면 될 것으로 보지만 Windows의 값은 확인하지 않았다.
 - 다운로드 칸의 [선택…](폴더 대화상자), [열기], 잘못된 규칙을 입력했을 때의 오류 표시는 손으로 해 보지 않았다. Windows의 폴더 대화상자와 경로 표시도 미확인.
@@ -150,7 +168,7 @@
 ## 다음 할 일
 
 1. **공개한 설치본 확인**: 다시 공개한 v0.1.0(새 키)도 설치해 보지 않고 공개했다. 첫 v0.1.0을 설치해 둔 기기가 있으면 지우고 새로 설치한다(옛 키를 믿어 업데이트를 받지 못한다). DMG(`gh release download v0.1.0 --repo nyabi-gh/Tailgate --pattern "*.dmg" --dir ~/Downloads`)를 README대로 설치하고, Windows는 `--pattern "*-setup.exe"`로 받아 설치한다(SmartScreen 경고, 자격 증명 관리자). 설치한 Windows 앱에서 터널(WireGuard·Mullvad)·동영상 재생도 본다.
-2. **0.1.1로 첫 앱 안 업데이트 확인**: 두 플랫폼에서 업데이트가 받아지고 설치되는지, macOS는 ad-hoc 서명이라 업데이트 뒤 키체인 허용 창이 다시 뜨는지, Windows는 NSIS `passive` 설치가 앱을 닫고 진행하는지. 배포 순서: `src-tauri/Cargo.toml` 버전만 올려 커밋·푸시, CI 통과 뒤 `git tag -a v0.1.1`(메시지가 릴리스 노트이자 업데이트 시트의 노트) → `git push origin v0.1.1` → 초안 확인 → `gh release edit v0.1.1 --repo nyabi-gh/Tailgate --draft=false`(공개해야 `releases/latest`에 잡힌다).
+2. **0.1.1로 첫 앱 안 업데이트 확인**: 릴리스 노트에 "2026-11-02 전 v0.1.0 설치자는 다시 설치"(README 절과 같은 내용)를 넣는다. 공개 전에 초안을 macOS·Windows에 설치하고 0.1.0 → 0.1.1 업데이트를 끝까지 해 본다. 같은 때 서명 키(`~/.tauri/tailgate.key`와 암호)를 서로 다른 두 곳에 백업하고 복원을 시험한다(더미 파일 서명·검증). 두 플랫폼에서 업데이트가 받아지고 설치되는지, macOS는 ad-hoc 서명이라 업데이트 뒤 키체인 허용 창이 다시 뜨는지, Windows는 NSIS `passive` 설치가 앱을 닫고 진행하는지. 배포 순서: `src-tauri/Cargo.toml` 버전을 올리고 `cargo check`(`src-tauri`)로 `Cargo.lock`의 `tailgate` 버전도 갱신해 둘을 함께 커밋·푸시(lock을 빠뜨리면 CI의 `--locked`가 실패한다), CI 통과 뒤 `git tag -a v0.1.1`(메시지가 릴리스 노트이자 업데이트 시트의 노트) → `git push origin v0.1.1` → 초안 확인 → `gh release edit v0.1.1 --repo nyabi-gh/Tailgate --draft=false`(공개해야 `releases/latest`에 잡힌다).
 3. 사용자 확인(위 "남은 일" 첫 항목).
 4. 그 뒤: 2단계(report.md 3절).
 
@@ -158,7 +176,7 @@
 
 - API 수동 점검: `cd src-tauri && cargo run --example api_probe -- [태그]`. 앱과 같은 경로(저장된 기기면 터널)로 me, 검색 2페이지, `order:score`, WebM, 삭제된 게시물, 단일 게시물, 자동완성을 부른다. e621 응답 구조가 바뀌면 여기서 디코딩 오류로 드러난다.
 - 터널 수동 점검: `cd src-tauri && cargo run --example tunnel_probe` (`--forget`은 Mullvad 기기 등록 해제, `PROBE_DOWNLOAD=<url>`은 속도 측정, `--serve`는 SOCKS5를 열어 두어 `curl -x socks5h://<주소>`로 터널을 쓸 수 있다). 출력의 "tunnel up in"은 이제 핸드셰이크까지 포함한다. 디버그·릴리스 실행 파일은 각각 처음 키체인을 읽을 때 허용 창이 뜬다.
-- Mullvad 계정 번호는 사용자가 직접 넣는다: `security add-generic-password -s pro.tb.nyabi.Tailgate -a mullvad-account -w`. 이 계정에는 지금 `divine condor` 기기가 등록되어 있다.
+- Mullvad 계정 번호는 사용자가 직접 넣는다: `security add-generic-password -s pro.tb.nyabi.Tailgate -a mullvad-account -w`. 이 계정에는 `divine condor` 기기가 등록되어 있었다(2026-11-04 이 Mac의 키체인에서는 사라짐, "남은 일").
 - 키체인 항목을 다른 실행 파일이 만들었거나 다시 빌드한 디버그 실행 파일이 읽으면 macOS가 접근 허용 창을 띄운다. 창이 떠 있는 동안 앱은 `connecting`으로 기다리고, 거부하면 `failed`(`credentialStore`)로 막힌 채 남는다.
 - 디버그 로그: `RUST_LOG=info,tailgate_lib=debug npm run tauri dev`. 웹 인스펙터는 `TAILGATE_DEVTOOLS=1`(디버그 빌드에서만).
 - 검사: `cargo test`, `cargo clippy --all-targets`, `cargo fmt --check`(`src-tauri`), `npm test`, `npm run check`, `npm run build`. 의존성을 바꾸면 `npm run notices`로 고지 파일을 다시 만든다(`cargo install --locked cargo-about --version 0.9.2 --features cli` 필요). Svelte 경고는 `npm run check`가 아니라 `npm run build`에서만 나오는 것이 있으니 둘 다 본다.

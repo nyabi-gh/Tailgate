@@ -57,6 +57,14 @@ Requires 64-bit Windows 10 or 11.
 Later versions install from inside the app (Settings → About). Your e621 API key and VPN settings
 are kept in Windows Credential Manager.
 
+## If you installed 0.1.0 before November 2, 2026
+
+The first 0.1.0 build was signed with a key that has since been replaced, so it cannot install
+any later version: an update stops with "The update could not be verified". Install the latest
+release over it once, as above (on macOS, replace the app in **Applications** and run the
+`xattr` command again). Your settings, e621 account and VPN settings stay. Updates from inside
+the app work again from then on.
+
 ## Build from source
 
 You need [Node.js](https://nodejs.org) 26 and [Rust](https://rustup.rs) 1.98 or later.
