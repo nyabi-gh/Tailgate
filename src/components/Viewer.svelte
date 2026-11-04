@@ -4,6 +4,7 @@
   import { mediaUrl } from "../lib/media";
   import { download, signedIn, toggleFavorite, vote } from "../lib/actions.svelte";
   import { setMenu } from "../lib/sets.svelte";
+  import { isEditable, onKeys } from "../lib/shortcuts";
   import { step, togglePanel, viewer } from "../lib/viewer.svelte";
   import InfoPanel from "./InfoPanel.svelte";
   import MediaStage from "./MediaStage.svelte";
@@ -34,7 +35,7 @@
   });
 
   function onkeydown(event: KeyboardEvent) {
-    if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey || isEditable(event.target)) return false;
     // The video's own controls use the arrow keys to seek and to change the volume.
     const inVideo = event.target instanceof HTMLVideoElement;
     const post = viewer.post;
@@ -49,15 +50,16 @@
     else if (event.key === "ArrowRight" && !inVideo) step(1);
     else if (event.code === "KeyI") togglePanel();
     else if (event.code === "Digit0") stage?.resetZoom();
-    else return;
+    else return false;
     event.preventDefault();
+    return true;
   }
+
+  $effect(() => onKeys("viewer", onkeydown));
 
   const control =
     "grid size-9 place-items-center rounded-full bg-panel/80 text-ink shadow-panel transition-opacity hover:opacity-100";
 </script>
-
-<svelte:window {onkeydown} />
 
 {#if viewer.post}
   {@const post = viewer.post}

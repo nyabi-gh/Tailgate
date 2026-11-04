@@ -48,6 +48,7 @@
     setMode,
   } from "./lib/sets.svelte";
   import { checkOnceAutomatically } from "./lib/updates.svelte";
+  import { isEditable, onKeys } from "./lib/shortcuts";
   import { closeViewer, openPost, viewer } from "./lib/viewer.svelte";
   import type { View } from "./lib/views";
 
@@ -64,10 +65,6 @@
   let signInSheet: SignInSheet;
   /** The thumbnail that carries the viewer's transition name, while it should. */
   let transitionId = $state<number | null>(null);
-
-  function isTyping(target: EventTarget | null) {
-    return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
-  }
 
   /** The thumbnail grows into the viewer and shrinks back (docs/report.md §8, motion). */
   async function transition(update: () => Promise<void>) {
@@ -103,18 +100,19 @@
   }
 
   function onkeydown(event: KeyboardEvent) {
-    if (viewer.open) return;
     // The physical key: `key` changes with Caps Lock and the input source (Hangul, for one). Only
     // the platform's own modifier, since Ctrl K in a macOS text field deletes to the end of line.
     const commandK = event.code === "KeyK" && (isMac ? event.metaKey : event.ctrlKey);
-    const slash = event.key === "/" && !isTyping(event.target);
-    if (commandK || slash) {
-      event.preventDefault();
-      view = "search";
-      // The field only exists on the search screen, so it may need a render first.
-      tick().then(() => tagInput?.focus());
-    }
+    const slash = event.key === "/" && !isEditable(event.target);
+    if (!commandK && !slash) return false;
+    event.preventDefault();
+    view = "search";
+    // The field only exists on the search screen, so it may need a render first.
+    tick().then(() => tagInput?.focus());
+    return true;
   }
+
+  $effect(() => onKeys("app", onkeydown));
 
   function run(next: string[]) {
     tags = next;
@@ -211,8 +209,6 @@
     if (view === "favorites" && signedInAs !== null && untrack(() => favorites.query) === null) startFavorites();
   });
 </script>
-
-<svelte:window {onkeydown} />
 
 <div class="flex h-full">
   <Sidebar current={view} onselect={(next) => (view = next)} onaccount={() => signInSheet.open()} />
