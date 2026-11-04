@@ -36,23 +36,31 @@
 
   function onkeydown(event: KeyboardEvent) {
     if (event.isComposing || event.metaKey || event.ctrlKey || event.altKey || isEditable(event.target)) return false;
+    const action = keyAction(event);
+    if (action === undefined) return false;
+    event.preventDefault();
+    // A held key repeats; only stepping should, the rest would flip back and forth (and each
+    // favorite or vote is a request to e621).
+    if (!event.repeat || event.key === "ArrowLeft" || event.key === "ArrowRight") action();
+    return true;
+  }
+
+  function keyAction(event: KeyboardEvent): (() => void) | undefined {
     // The video's own controls use the arrow keys to seek and to change the volume.
     const inVideo = event.target instanceof HTMLVideoElement;
     const post = viewer.post;
-    if (event.key === "Escape" && setMenu.open) setMenu.open = false;
-    else if (event.key === "Escape") onclose();
-    else if (event.key === "ArrowUp" && !inVideo && post) vote(post, true);
-    else if (event.key === "ArrowDown" && !inVideo && post) vote(post, false);
-    else if (event.code === "KeyF" && post) toggleFavorite(post);
-    else if (event.code === "KeyD" && post) download(post);
-    else if (event.code === "KeyS") toggleSetMenu();
-    else if (event.key === "ArrowLeft" && !inVideo) step(-1);
-    else if (event.key === "ArrowRight" && !inVideo) step(1);
-    else if (event.code === "KeyI") togglePanel();
-    else if (event.code === "Digit0") stage?.resetZoom();
-    else return false;
-    event.preventDefault();
-    return true;
+    if (event.key === "Escape" && setMenu.open) return () => (setMenu.open = false);
+    if (event.key === "Escape") return onclose;
+    if (event.key === "ArrowUp" && !inVideo && post) return () => vote(post, true);
+    if (event.key === "ArrowDown" && !inVideo && post) return () => vote(post, false);
+    if (event.code === "KeyF" && post) return () => toggleFavorite(post);
+    if (event.code === "KeyD" && post) return () => download(post);
+    if (event.code === "KeyS") return toggleSetMenu;
+    if (event.key === "ArrowLeft" && !inVideo) return () => step(-1);
+    if (event.key === "ArrowRight" && !inVideo) return () => step(1);
+    if (event.code === "KeyI") return togglePanel;
+    if (event.code === "Digit0") return () => stage?.resetZoom();
+    return undefined;
   }
 
   $effect(() => onKeys("viewer", onkeydown));
