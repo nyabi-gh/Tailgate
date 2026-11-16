@@ -5,8 +5,9 @@ use serde::Deserialize;
 use super::{
     Api, ApiError, Credentials,
     models::{
-        Favorited, Pool, PoolCategory, Post, PostSet, RawPool, RawPostEnvelope, RawPostSet,
-        RawPosts, RawSetsForSelect, RawUser, TagSuggestion, User, Voted,
+        CommentPage, Favorited, Pool, PoolCategory, Post, PostSet, RawComment, RawComments,
+        RawPool, RawPostEnvelope, RawPostSet, RawPosts, RawSetsForSelect, RawUser, TagSuggestion,
+        User, Voted,
     },
 };
 
@@ -175,6 +176,33 @@ impl Api {
             )
             .await?;
         Ok(())
+    }
+
+    /// A post's comments, oldest first, `PAGE_SIZE` to a page; pages count from 1.
+    pub async fn comments(&self, post: u64, page: u32) -> Result<CommentPage, ApiError> {
+        let (post, limit, page) = (post.to_string(), PAGE_SIZE.to_string(), page.to_string());
+        let raw: RawComments = self
+            .client
+            .get(
+                "comments.json",
+                &[
+                    // Without it the search answers with posts that have comments.
+                    ("group_by", "comment"),
+                    ("search[post_id]", &post),
+                    ("search[order]", "id_asc"),
+                    ("limit", &limit),
+                    ("page", &page),
+                ],
+            )
+            .await?;
+        let raw = raw.into_vec();
+        Ok(CommentPage {
+            done: raw.len() < PAGE_SIZE,
+            comments: raw
+                .into_iter()
+                .filter_map(RawComment::into_comment)
+                .collect(),
+        })
     }
 
     /// In the order of `ids`. Posts e621 leaves out, such as deleted ones, are missing.

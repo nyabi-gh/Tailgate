@@ -9,7 +9,7 @@ use crate::{
     account::{Account, AccountError, AccountState},
     api::{
         Api, ApiError, PoolQuery, Popular, SetQuery,
-        models::{Favorited, Pool, TagSuggestion, Voted},
+        models::{CommentPage, Favorited, Pool, TagSuggestion, Voted},
     },
     download::{
         DownloadDetails, DownloadError, DownloadRequest, Downloads, NameRuleError, Saved,
@@ -235,6 +235,15 @@ pub async fn change_set(
 #[tauri::command]
 pub async fn pools_by_id(api: State<'_, Arc<Api>>, ids: Vec<u64>) -> Result<Vec<Pool>, ApiError> {
     api.pools_by_id(&ids).await
+}
+
+#[tauri::command]
+pub async fn comments(
+    api: State<'_, Arc<Api>>,
+    post: u64,
+    page: u32,
+) -> Result<CommentPage, ApiError> {
+    api.comments(post, page).await
 }
 
 #[tauri::command]

@@ -64,6 +64,7 @@ pub fn run() {
             commands::my_sets,
             commands::set_choices,
             commands::change_set,
+            commands::comments,
             commands::favorite,
             commands::vote,
             commands::download,

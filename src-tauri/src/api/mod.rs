@@ -368,6 +368,35 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn asks_for_a_posts_comments_oldest_first() {
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/comments.json")).unwrap();
+        let (api, mut received) = fake_api(vec![ok(&fixture)]).await;
+        let page = api.comments(7, 2).await.unwrap();
+        assert_eq!(page.comments.len(), 4);
+        assert!(page.done);
+        assert_eq!(
+            drain(&mut received)[0].target,
+            "/comments.json?group_by=comment&search%5Bpost_id%5D=7&search%5Border%5D=id_asc&limit=100&page=2"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reads_a_post_without_comments_and_leaves_out_hidden_ones() {
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/comments.json")).unwrap();
+        let mut full: Vec<Value> = (0..100).map(|_| fixture[0].clone()).collect();
+        full[3]["is_hidden"] = json!(true);
+        let (api, _received) =
+            fake_api(vec![ok(&json!({ "comments": [] })), ok(&json!(full))]).await;
+        let none = api.comments(7, 1).await.unwrap();
+        assert!(none.comments.is_empty() && none.done);
+        let page = api.comments(7, 1).await.unwrap();
+        assert_eq!(page.comments.len(), 99);
+        assert!(!page.done);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn asks_for_sets_by_name_and_order() {
         let (api, mut received) = fake_api(vec![ok(&json!([])), ok(&json!([]))]).await;
         let query = SetQuery {

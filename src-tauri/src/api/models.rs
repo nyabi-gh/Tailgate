@@ -479,6 +479,72 @@ pub(super) struct RawSetsForSelect {
     pub maintained: Vec<(String, u64)>,
 }
 
+/// A comment on a post.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Comment {
+    pub id: u64,
+    pub created_at: String,
+    pub creator: Option<String>,
+    /// DText, as written.
+    pub body: String,
+    pub score: i64,
+    /// Pinned above the others by the staff.
+    pub is_sticky: bool,
+}
+
+/// One page of a post's comments, oldest first.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommentPage {
+    pub comments: Vec<Comment>,
+    pub done: bool,
+}
+
+#[derive(Deserialize)]
+pub(super) struct RawComment {
+    id: u64,
+    created_at: String,
+    #[serde(default)]
+    creator_name: Option<String>,
+    body: String,
+    score: i64,
+    is_sticky: bool,
+    is_hidden: bool,
+}
+
+impl RawComment {
+    /// `None` for a hidden comment: e621 sends those only to their author and the staff, and
+    /// its own page folds them away.
+    pub(super) fn into_comment(self) -> Option<Comment> {
+        (!self.is_hidden).then_some(Comment {
+            id: self.id,
+            created_at: self.created_at,
+            creator: self.creator_name,
+            body: self.body,
+            score: self.score,
+            is_sticky: self.is_sticky,
+        })
+    }
+}
+
+/// `/comments.json` answers a search that finds nothing with an object instead of an empty
+/// array.
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub(super) enum RawComments {
+    Found(Vec<RawComment>),
+    Empty { comments: Vec<RawComment> },
+}
+
+impl RawComments {
+    pub(super) fn into_vec(self) -> Vec<RawComment> {
+        match self {
+            Self::Found(comments) | Self::Empty { comments } => comments,
+        }
+    }
+}
+
 /// Posts from a `/posts.json` response, for tests elsewhere that start from real responses.
 #[cfg(test)]
 pub(crate) fn decode_posts(json: &str) -> Vec<Post> {
@@ -493,6 +559,22 @@ mod tests {
     fn posts(fixture: &str) -> Vec<Post> {
         let raw: RawPosts = serde_json::from_str(fixture).unwrap();
         raw.posts.into_iter().map(Post::from).collect()
+    }
+
+    #[test]
+    fn decodes_comments() {
+        let raw: RawComments =
+            serde_json::from_str(include_str!("../../tests/fixtures/comments.json")).unwrap();
+        let comments: Vec<Comment> = raw
+            .into_vec()
+            .into_iter()
+            .filter_map(RawComment::into_comment)
+            .collect();
+        assert_eq!(comments.len(), 4);
+        assert_eq!(comments[0].id, 10127786);
+        assert_eq!(comments[0].creator.as_deref(), Some("Glootmcgoot"));
+        assert!(comments[0].body.starts_with("[quote]"));
+        assert!(!comments[0].is_sticky);
     }
 
     #[test]
