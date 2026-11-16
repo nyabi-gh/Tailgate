@@ -15,6 +15,7 @@ Tailgate is not made by or affiliated with e621.
 - Popular posts by day, week or month
 - Pools, read in order, and sets: browse yours or find others, and add posts to your own
 - Full-window viewer for images, GIFs and videos, with zoom
+- Comments and descriptions, and a link to each post's page on e621
 - Favorites, votes and downloads with your e621 account (API key)
 - Your account's blacklist, applied the same way as on the site
 - Connection: direct, a WireGuard `.conf` file, or a Mullvad account with a choice of location
