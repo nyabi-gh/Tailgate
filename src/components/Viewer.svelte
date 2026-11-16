@@ -1,19 +1,22 @@
 <script lang="ts">
   import { ChevronLeft, ChevronRight, PanelRightClose, PanelRightOpen, X } from "@lucide/svelte";
-  import { m } from "../lib/i18n/index.svelte";
+  import { currentLocale, m } from "../lib/i18n/index.svelte";
   import { mediaUrl } from "../lib/media";
   import { download, signedIn, toggleFavorite, vote } from "../lib/actions.svelte";
   import { setMenu } from "../lib/sets.svelte";
   import { isEditable, onKeys } from "../lib/shortcuts";
-  import { step, togglePanel, viewer } from "../lib/viewer.svelte";
+  import { showPanelTab, step, toggleComments, togglePanel, viewer, type PanelTab } from "../lib/viewer.svelte";
+  import Comments from "./Comments.svelte";
   import InfoPanel from "./InfoPanel.svelte";
   import MediaStage from "./MediaStage.svelte";
 
   let {
     onclose,
     onpool,
-    ontag,
-  }: { onclose: () => void; onpool: (id: number) => void; ontag: (tag: string) => void } = $props();
+    onsearch,
+  }: { onclose: () => void; onpool: (id: number) => void; onsearch: (tags: string[]) => void } = $props();
+
+  const tabs: PanelTab[] = ["info", "comments"];
 
   let stage: MediaStage | undefined = $state();
 
@@ -59,11 +62,17 @@
     if (event.key === "ArrowLeft" && !inVideo) return () => step(-1);
     if (event.key === "ArrowRight" && !inVideo) return () => step(1);
     if (event.code === "KeyI") return togglePanel;
+    if (event.code === "KeyC") return toggleComments;
     if (event.code === "Digit0") return () => stage?.resetZoom();
     return undefined;
   }
 
   $effect(() => onKeys("viewer", onkeydown));
+
+  const tab = (selected: boolean) => [
+    "flex h-7 flex-1 items-center justify-center gap-1.5 rounded-sm px-3 transition-colors",
+    selected ? "bg-panel font-medium text-ink shadow-panel" : "text-ink/75 hover:text-ink",
+  ];
 
   const control =
     "grid size-9 place-items-center rounded-full bg-panel/80 text-ink shadow-panel transition-opacity hover:opacity-100";
@@ -125,14 +134,39 @@
     </div>
 
     {#if viewer.panelOpen}
-      <aside class="w-[300px] shrink-0 overflow-y-auto border-l border-seam bg-panel">
-        <InfoPanel
-          {post}
-          originalStatus={stage?.originalStatus() ?? null}
-          onoriginal={() => stage?.loadOriginal()}
-          {onpool}
-          {ontag}
-        />
+      <aside class="flex w-[300px] shrink-0 flex-col border-l border-seam bg-panel">
+        <div class="px-5 pt-14 pb-2">
+          <div class="flex rounded-md bg-hover p-0.5" role="radiogroup" aria-label={m().viewer.panelTabs}>
+            {#each tabs as name (name)}
+              {@const selected = viewer.panelTab === name}
+              <button
+                class={tab(selected)}
+                role="radio"
+                aria-checked={selected}
+                title={name === "comments" ? `${m().viewer.comments} (C)` : undefined}
+                onclick={() => showPanelTab(name)}
+              >
+                {m().viewer[name]}
+                {#if name === "comments" && post.commentCount > 0}
+                  <span class="text-dim tabular-nums">{post.commentCount.toLocaleString(currentLocale())}</span>
+                {/if}
+              </button>
+            {/each}
+          </div>
+        </div>
+        <div class="min-h-0 flex-1 overflow-y-auto">
+          {#if viewer.panelTab === "comments"}
+            <Comments {post} {onsearch} />
+          {:else}
+            <InfoPanel
+              {post}
+              originalStatus={stage?.originalStatus() ?? null}
+              onoriginal={() => stage?.loadOriginal()}
+              {onpool}
+              {onsearch}
+            />
+          {/if}
+        </div>
       </aside>
     {/if}
   </div>

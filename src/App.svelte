@@ -163,11 +163,11 @@
     openPool(id);
   }
 
-  /** From a tag in the viewer: a new search for that tag alone. */
-  async function searchTag(tag: string) {
+  /** From a tag or a search link in the viewer: a new search for just those tags. */
+  async function searchTags(tags: string[]) {
     await close();
     view = "search";
-    run([tag]);
+    run(tags);
   }
 
   // Favorites and votes in the results belong to whoever is signed in, so a change of account
@@ -412,7 +412,7 @@
 </div>
 
 {#if viewer.open}
-  <Viewer onclose={close} onpool={showPool} ontag={searchTag} />
+  <Viewer onclose={close} onpool={showPool} onsearch={searchTags} />
 {/if}
 
 <SignInSheet bind:this={signInSheet} />

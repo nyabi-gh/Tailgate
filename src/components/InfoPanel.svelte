@@ -7,6 +7,7 @@
   import { learnPoolNames, poolName } from "../lib/pools.svelte";
   import { rememberCategories } from "../lib/search.svelte";
   import { setMenu } from "../lib/sets.svelte";
+  import Description from "./Description.svelte";
   import SetMenu from "./SetMenu.svelte";
   import { categoryTone } from "../lib/tags";
 
@@ -15,13 +16,13 @@
     originalStatus,
     onoriginal,
     onpool,
-    ontag,
+    onsearch,
   }: {
     post: Post;
     originalStatus: "idle" | "loading" | "failed" | null;
     onoriginal: () => void;
     onpool: (id: number) => void;
-    ontag: (tag: string) => void;
+    onsearch: (tags: string[]) => void;
   } = $props();
 
   $effect(() => {
@@ -70,7 +71,7 @@
   }
 </script>
 
-<div class="flex flex-col gap-5 p-5 pt-14">
+<div class="flex flex-col gap-5 p-5 pt-2">
   <section class="flex flex-col gap-2">
     <div class="flex items-center gap-1">
       <h2 class="text-lg font-strong">#{post.id}</h2>
@@ -174,6 +175,12 @@
     </button>
   {/if}
 
+  {#if post.description.trim() !== ""}
+    {#key post.id}
+      <Description source={post.description} {onsearch} />
+    {/key}
+  {/if}
+
   {#if post.pools.length > 0}
     <section class="flex flex-col gap-1.5">
       <h3 class="text-xs text-faint">{m().viewer.pools}</h3>
@@ -224,7 +231,7 @@
                 class={["rounded-sm px-1.5 py-0.5 text-left text-sm hover:underline", categoryTone[category]]}
                 onclick={() => {
                   rememberCategories({ [tag]: category });
-                  ontag(tag);
+                  onsearch([tag]);
                 }}
               >
                 {tag}

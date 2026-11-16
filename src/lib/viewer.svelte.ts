@@ -7,6 +7,8 @@ let openId = $state<number | null>(null);
 /** The screen's posts the viewer was opened from, and steps through. */
 let list = $state.raw<PostList | null>(null);
 let panelOpen = $state(true);
+export type PanelTab = "info" | "comments";
+let panelTab = $state<PanelTab>("info");
 // Kept for the run, so stepping through videos does not start each one loud.
 let muted = $state(true);
 
@@ -32,6 +34,9 @@ export const viewer = {
   },
   get panelOpen() {
     return panelOpen;
+  },
+  get panelTab() {
+    return panelTab;
   },
   get muted() {
     return muted;
@@ -69,6 +74,20 @@ export function step(by: 1 | -1) {
 
 export function togglePanel() {
   panelOpen = !panelOpen;
+}
+
+export function showPanelTab(tab: PanelTab) {
+  panelTab = tab;
+}
+
+/** Opens the panel on the comments, or goes back to the details when they already show. */
+export function toggleComments() {
+  if (!panelOpen) {
+    panelOpen = true;
+    panelTab = "comments";
+  } else {
+    panelTab = panelTab === "comments" ? "info" : "comments";
+  }
 }
 
 export function setMuted(value: boolean) {
