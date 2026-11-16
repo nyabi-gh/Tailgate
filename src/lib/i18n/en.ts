@@ -259,6 +259,7 @@ const en = {
     previous: "Previous",
     next: "Next",
     showPanel: "Show details",
+    onE621: "Open on e621",
     hidePanel: "Hide details",
     original: "View original",
     loadingOriginal: "Loading the original…",

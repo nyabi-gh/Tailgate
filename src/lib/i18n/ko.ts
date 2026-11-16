@@ -260,6 +260,7 @@ const ko: Messages = {
     previous: "이전",
     next: "다음",
     showPanel: "정보 보기",
+    onE621: "e621에서 보기",
     hidePanel: "정보 숨기기",
     original: "원본 보기",
     loadingOriginal: "원본 불러오는 중…",

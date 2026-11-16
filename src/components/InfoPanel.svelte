@@ -61,7 +61,7 @@
     "flex h-8 items-center gap-1.5 rounded-md px-2.5 font-medium transition-colors hover:bg-hover disabled:opacity-60";
 
   function open(url: string) {
-    openUrl(url).catch((cause) => console.error("could not open a source link", cause));
+    openUrl(url).catch((cause) => console.error("could not open a link", cause));
   }
 
   /** Sources are free text on e621; only web links can be opened. */
@@ -72,7 +72,17 @@
 
 <div class="flex flex-col gap-5 p-5 pt-14">
   <section class="flex flex-col gap-2">
-    <h2 class="text-lg font-strong">#{post.id}</h2>
+    <div class="flex items-center gap-1">
+      <h2 class="text-lg font-strong">#{post.id}</h2>
+      <button
+        class="grid size-7 place-items-center rounded-md text-dim transition-colors hover:bg-hover hover:text-ink"
+        aria-label={m().viewer.onE621}
+        title={m().viewer.onE621}
+        onclick={() => open(`https://e621.net/posts/${post.id}`)}
+      >
+        <ExternalLink size={15} strokeWidth={1.75} />
+      </button>
+    </div>
     <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-dim">
       <span class="flex items-center gap-1" title={m().viewer.score}>
         <ArrowUp size={14} strokeWidth={2} />{count(post.score.up)}
