@@ -50,6 +50,24 @@ Pawru의 테스트 픽스처(`PawruTests/Fixtures/*.json`, 실제 응답)를 재
 - 자동완성은 철자가 비슷한 태그도 돌려준다. `zzzzqqqq`에 `zzz`, `zzz4` 등이 왔다.
 - `page=b<id>`로 이어 받은 두 번째 페이지는 첫 페이지 최소 id보다 작은 id부터 시작했다(겹침 없음).
 
+### 새 게시물 형식이 기본이 됨 (2026-11-23)
+
+e621ng #2759(2026-11-13 병합)로 `posts.json`, `posts/{id}.json`, `favorites.json`, `popular.json`이 기본으로 새 형식을 준다. 옛 형식(위 픽스처의 모양)은 `?v1=true`를 붙일 때만 나오고 "제거될 때까지"라고 적혀 있다. `?v2=true`는 무시된다. 직렬화는 `app/blueprints/post_blueprint.rb`(새 형식), `post_legacy_blueprint.rb`(옛 형식). v0.1.2는 옛 형식만 읽어 첫 `posts.json`에서 디코딩 오류가 났다(`api_probe`로 재현, 터널).
+
+터널로 실호출해 확인한 새 형식:
+- 목록은 맨 배열, 단일 게시물은 감싸지 않은 객체(`{"post":…}`가 없음).
+- `files.meta{md5, ext, size, duration, has_sample}`, `files.original{width, height, url}`, `files.preview`·`files.sample`은 `{width, height, jpg, webp}`. 옛 `url`은 `jpg`와 같은 파일이다.
+- **샘플이 없는 게시물은 `files.sample`에 원본 주소가 들어온다**(`sample_url_pair`). 옛 형식은 null이었다. 샘플이 있는지는 `files.meta.has_sample`로 본다.
+- 동영상은 `files.video`(옛 `sample.alternates`와 같은 `video_sample_list`, `has` 키가 더 있음). 동영상이 아니면 키가 없다.
+- `stats{score, fav_count, is_favorited, vote, comment_count, hotness}`로 묶였다.
+- `tags`는 기본(`basic`)이 평평한 배열이고, `mode=extended`일 때만 카테고리별 객체다. 앱은 카테고리가 필요해 늘 `mode=extended`를 보낸다.
+- 숨김·삭제 게시물은 여전히 URL이 모두 null이다(`status:deleted` 100개 모두).
+
+같은 시기의 다른 변경(앱 동작에는 영향 없음):
+- 즐겨찾기 추가·해제는 사용자당 분당 60회, 넘으면 429(#2829).
+- API 키·Basic 인증은 `.json`·`.xml`·`.atom` 요청이고 `Sec-Fetch-Mode: navigate`나 `empty`가 아닌 `Sec-Fetch-Dest`가 없을 때만 받는다(#2763). 웹뷰가 아니라 Rust가 부르므로 해당하지 않는다.
+- 빈 결과: `comments.json`, `pools.json`, `post_sets.json` 모두 `[]`(실호출).
+
 ### 인기·풀·세트 (2026-10-22)
 
 e621ng `main`의 소스(라우트·컨트롤러·모델)를 읽고, 몇 가지는 터널을 거쳐 실호출로 확인했다.

@@ -1,10 +1,10 @@
 # 진행 상황
 
-2026-11-16 기준. 계획은 [report.md](report.md), 근거는 [research.md](research.md). 상태는 이 문서에만 적는다.
+2026-11-23 기준. 계획은 [report.md](report.md), 근거는 [research.md](research.md). 상태는 이 문서에만 적는다.
 
 ## 지금 단계
 
-1단계 1~12번의 코드를 모두 작성하고 커밋해 푸시했다(2026-10-22). 2026-10-25에 첫 릴리스 v0.1.0을 macOS·Windows로 공개했다. 2026-11-02 저장소를 실수로 지워 다시 만들고, 서명 키를 새로 만들어 v0.1.0을 다시 공개했다(아래 "저장소 다시 만들기"). 2026-11-04 종합 검토를 하고, 그중 0.1.1 전에 고칠 항목을 고쳤다(아래 "0.1.1 전에 고친 것"). 같은 날 v0.1.1을 공개했다(설치 확인 없이, 사용자 요청). 2026-11-16 댓글·게시물 설명·e621 링크를 넣어 v0.1.2를 공개했다(설치 확인과 실제 앱 확인 없이, 사용자 요청). 남은 것은 설치본 확인과 첫 앱 안 업데이트(아래 "다음 할 일"), 사용자가 손으로 해 보는 확인(아래 "남은 일")이다.
+1단계 1~12번의 코드를 모두 작성하고 커밋해 푸시했다(2026-10-22). 2026-10-25에 첫 릴리스 v0.1.0을 macOS·Windows로 공개했다. 2026-11-02 저장소를 실수로 지워 다시 만들고, 서명 키를 새로 만들어 v0.1.0을 다시 공개했다(아래 "저장소 다시 만들기"). 2026-11-04 종합 검토를 하고, 그중 0.1.1 전에 고칠 항목을 고쳤다(아래 "0.1.1 전에 고친 것"). 같은 날 v0.1.1을 공개했다(설치 확인 없이, 사용자 요청). 2026-11-16 댓글·게시물 설명·e621 링크를 넣어 v0.1.2를 공개했다(설치 확인과 실제 앱 확인 없이, 사용자 요청). 2026-11-23 e621이 게시물 응답을 새 형식으로 바꿔(2026-11-13) v0.1.2에서 게시물을 불러오지 못하는 것을 확인하고, 새 형식으로 옮겼다(아래 "e621 새 게시물 형식", research.md 2절). 아직 커밋·배포 전이다. 남은 것은 이 수정의 0.1.3 배포, 설치본 확인과 첫 앱 안 업데이트(아래 "다음 할 일"), 사용자가 손으로 해 보는 확인(아래 "남은 일")이다.
 
 - **1~8번**(공개 저장소 https://github.com/nyabi-gh/Tailgate 에 올림): 터널·킬 스위치·`media://`(동영상 블록 캐시), API 계층, 계정(로그인·키체인), 검색(태그 칩·자동완성·정렬·3:4 격자·가상/무한 스크롤), 블랙리스트(e621 사이트와 같은 규칙), 뷰어(전환 효과·줌·원본·GIF·동영상·정보 패널), 즐겨찾기·투표·다운로드와 즐겨찾기 화면.
 - **9번 연결 설정**: 설정 화면의 계정·연결 칸, 직접 / WireGuard 파일 / Mullvad 로그인·위치 선택, 서버 목록 디스크 캐시, 실행 중 끊김 감지·자동 재연결, 라우트 전환 시 연결 끊기. 같은 날 검색 화면이 태그 없이 최신 게시물로 열리게 바꿨다(따로 홈 버튼 없음, report.md 3절).
@@ -36,7 +36,7 @@
 | 타임아웃 | `network.rs`, `tunnel/` | report.md 6.5절 |
 | `media://` | `media/`, `media.ts`, `storage.ts` | 이미지는 통째로, 동영상은 1MB 블록 캐시(`media/blocks.rs`, 메모리 256MB, 다음 블록 미리 받기)로 응답. report.md 7.2절. 이미지는 디스크 캐시(`media/disk.rs`, 기본 1GB, 오래 쓰지 않은 것부터 지움)에서 먼저 찾고, 없으면 받아서 남김. report.md 7.3절 |
 | 라이선스 | `LICENSE`, `scripts/notices.mjs`, `src-tauri/about.toml`, `src-tauri/resources/THIRD-PARTY-NOTICES.html` | MIT. 배포물 고지는 `npm run notices`로 만들어 커밋하고 번들 리소스로 넣음(Tailgate·Wanted Sans·웹 패키지 7개·크레이트 355개, report.md 10절). CI(macOS)가 최신인지 확인. 앱에서 여는 버튼은 11-3 |
-| API 계층 | `api/`, `examples/api_probe.rs` | posts 검색(`PostSearch`, 100개씩, `b<id>` 또는 페이지 번호, 중복 제거), 단일 게시물, `users/me`, 자동완성. 요청 시작 간격 1초, UA, Basic 인증(자격 증명 설정 자리만, 저장은 4번), 429·503 재시도, 오류 코드. 8번에서 POST·DELETE(폼 본문), 즐겨찾기·투표, 내 즐겨찾기 목록 추가 |
+| API 계층 | `api/`, `examples/api_probe.rs` | posts 검색(`PostSearch`, 100개씩, `b<id>` 또는 페이지 번호, 중복 제거), 단일 게시물, `users/me`, 자동완성. 요청 시작 간격 1초, UA, Basic 인증(자격 증명 설정 자리만, 저장은 4번), 429·503 재시도, 오류 코드. 8번에서 POST·DELETE(폼 본문), 즐겨찾기·투표, 내 즐겨찾기 목록 추가. 2026-11-23 게시물 응답을 e621의 새 형식(맨 배열, `files`·`stats`)으로 읽고, 게시물을 받는 요청(검색·단일·즐겨찾기·인기·id 목록)은 모두 `mode=extended`를 붙여 카테고리별 태그를 받음(`endpoints.rs`의 `post_list`). 샘플 유무는 `has_sample`로 판단 |
 | 계정 | `account.rs`, `account.svelte.ts`, `SignInSheet.svelte` | 로그인 시트(사이드바), e621 확인 뒤 키체인 `e621-account`에 저장, 로그아웃, 시작 시 복원하고 연결이 열리면 `/users/me`로 확인, 401이면 저장된 키를 지우고 "다시 로그인". UA는 API와 `media://` 모두 로그인한 이름. API 키 발급 페이지는 `tauri-plugin-opener`로 연다(권한은 7번에서 http/https 전체, 8번에서 파일 위치 열기 추가). 로그아웃은 실제 앱에서 안 해 봄 |
 | 검색 | `search.rs`, `search.svelte.ts`, `layout.ts`, `tags.ts`, `TagInput`, `SortMenu`, `Grid`, `Thumb` | 앱을 켜면 태그 없는 검색(최신 게시물)으로 시작, 태그를 모두 지우고 검색해도 같음(2026-10-21, 빈 검색 화면 대신), 태그 칩(카테고리 색: 자동완성과 첫 결과에서 앎, 메타태그는 meta 색, 제외는 취소선), 자동완성(3글자, 300ms, 접두어 캐시), 정렬 메뉴(`order:` 바꿈), 3:4 같은 크기 칸 격자(틈 3px, 그림은 칸을 채우게 자름. 2026-10-21 justified에서 바꿈), 가상 스크롤(±1화면), 남은 1.5화면에서 다음 페이지, ⌘/Ctrl+휠·슬라이더로 칸 폭 100~360(기본 180, 240 이상이면 `sample`(화면 확대를 곱한 폭으로, 2026-10-25 `isLargeCell`), 멈춘 뒤 0.5초에 `settings.json`에 저장해 다음 실행에도 유지), 최근 검색어(태그 있는 검색만 10개, 빈 검색창에 포커스하면 목록, ↑/↓로 고르고 Enter, 아무것도 고르지 않은 Enter는 지금처럼 최신 게시물), 로딩·빈 결과·오류·다시 시도, 계정이 바뀌면 다시 검색, 썸네일을 누르면 뷰어 |
 | 인기 | `endpoints.rs`(`Popular`, `Scale`), `search.rs`, `popular.ts`, `PopularBar.svelte`, `search.svelte.ts`, `App.svelte` | `popular.json`에 날짜·기간·컴퓨터 시간대를 보내 한 페이지(12-1). [일 \| 주 \| 월], [‹ 기간 ›], [오늘], 미래 기간 막기. 화면을 떠나도 기간과 스크롤 유지, 블랙리스트 적용 |
@@ -131,12 +131,13 @@
 | 11-04 | v0.1.1 배포 | 초안의 `.sig` trusted comment와 키 ID, `latest.json`, 공개 뒤 `releases/latest/download/` 주소 | 통과. 두 `.sig`가 키 `0FB5674FAAE141FD`·`version:0.1.1`, `latest.json`이 0.1.1과 두 플랫폼의 `v0.1.1` 파일을 줌. 공개 뒤 `latest.json`이 0.1.1, `.dmg`·`-setup.exe`·`.app.tar.gz`가 200. 설치본과 앱 안 업데이트는 실행해 보지 않음 |
 | 11-04 | 0.1.1 전 수정 | `cargo test`(137), `cargo clippy --all-targets -D warnings`, `cargo fmt --check`, `npm test`(35), `npm run check`, `npm run build`, 개발 앱 실행 | 검사 모두 통과, 경고 0. 개발 앱은 직접 연결로 시작했고 e621 연결이 끊겨(reset) 화면 동작은 확인하지 못함. 이 Mac에 Tailgate의 키체인 항목 4개가 모두 없고 `Application Support`·캐시 폴더도 이번 실행에서 새로 생김(저장된 것이 없으면 직접 연결이 규칙). 사용자가 화면 확인 없이 마무리하기로 함 |
 | 11-16 | 댓글·DText·설명·e621 링크 | `cargo test`(140: 댓글 픽스처 디코딩, 요청 주소, 빈 결과 객체, 숨김 댓글 빼기와 다음 페이지 여부), `npm test`(54: DText 19), `cargo clippy --all-targets -D warnings`·`fmt --check`, `npm run check`·`build` | 통과, 경고 0. 실제 앱과 e621 실호출은 하지 않음(이 Mac에 터널 설정이 없음). 댓글 픽스처는 Pawru의 실제 응답(2026-10-16) |
+| 11-23 | e621 새 게시물 형식 | 고치기 전 `api_probe`(Windows, 터널): `me` 뒤 `posts.json`에서 `Decode`. 픽스처 4개를 같은 게시물의 새 형식(`mode=extended`) 실제 응답으로 교체, `cargo test`(142: 단일 게시물 1, 샘플 없는 GIF 1 추가, 요청 주소 단언에 `mode=extended`), `cargo clippy --all-targets -D warnings`, `cargo fmt --check`, 고친 뒤 `api_probe`·`tunnel_probe`(터널) | 통과. `api_probe`: 검색 2페이지(커서 이어짐), `order:score`, WebM 720p·MP4, 삭제 100개 모두 URL 없음, 단일 게시물, 자동완성 모두 디코딩. 블랙리스트 테스트의 게시물은 그사이 점수·즐겨찾기·pending이 바뀌어, 테스트가 그 세 값을 문서 주석의 값으로 고정함. 개발 앱 화면과 인기·즐겨찾기·풀·세트는 실제로 열어 보지 않음(같은 `post_list`를 거치고, 인기 응답이 배열임은 curl로 확인) |
 | 11-16 | v0.1.2 배포 | 초안의 `.sig` trusted comment와 키 ID, `latest.json`, 공개 뒤 `releases/latest/download/` 주소 | 통과. 두 `.sig`가 키 `0FB5674FAAE141FD`·`version:0.1.2`, `latest.json`이 0.1.2와 두 플랫폼의 `v0.1.2` 파일을 줌. 공개 뒤 `latest.json`이 0.1.2, `.dmg`·`-setup.exe`·`.app.tar.gz`가 200. 설치본과 앱 안 업데이트는 실행해 보지 않음 |
 | 10-21 | 최신순 첫 화면 | `cargo test`(100: 빈 검색이 `tags=`와 `b<id>` 커서로 요청), `npm run check`·`build`·`test`, 실제 앱(Vite 다시 불러오기) | 통과. 앱이 최신 게시물 격자로 열리고 정렬 "최신순" 표시. 같은 실행에서 쉬는 터널의 건강 검사가 2분마다 핸드셰이크를 마침(로그 `tunnel health check: handshake completed`) |
 
 ## 남은 일
 
-- **댓글·설명·e621 링크(2026-11-16, v0.1.2로 공개됨)의 확인**: 화면은 한 번도 보지 않았다(탭 전환과 C 키, 댓글 목록·날짜·점수·고정 표시, 인용·스포일러·링크, `{{태그}}` 검색, 설명 접기, `#id` 옆 버튼, 다크 모드). e621에 물어 확인할 것: 댓글이 없는 게시물의 응답 모양(코드는 배열과 `{"comments":[]}` 둘 다 받는다), `search[order]=id_asc`와 `limit=100`이 그대로 먹는지, 100개 넘는 게시물의 [댓글 더 보기], `[[위키]]` 주소(`/wiki_pages/show_or_new?title=`). 풀·세트 목록도 빈 결과가 배열이라고 가정하고 있어(`pools.json`, `post_sets.json`) 같은 확인이 필요하다.
+- **댓글·설명·e621 링크(2026-11-16, v0.1.2로 공개됨)의 확인**: 화면은 한 번도 보지 않았다(탭 전환과 C 키, 댓글 목록·날짜·점수·고정 표시, 인용·스포일러·링크, `{{태그}}` 검색, 설명 접기, `#id` 옆 버튼, 다크 모드). 댓글이 없는 게시물은 `[]`로 답한다(2026-11-23 실호출, 코드는 `{"comments":[]}`도 받는다). e621에 물어 확인할 것: `search[order]=id_asc`와 `limit=100`이 그대로 먹는지, 100개 넘는 게시물의 [댓글 더 보기], `[[위키]]` 주소(`/wiki_pages/show_or_new?title=`). 풀·세트 목록의 빈 결과도 `[]`로 확인했다(2026-11-23).
 - **0.1.1 전 수정의 화면 확인**: 뷰어 위 로그인 시트에 `d`·`f`·←/→·Esc 입력, 시트 뒤 ⌘K·`/`, 뷰어에서 F 길게 누르기, 뷰어에서 로그인한 뒤 같은 게시물이 남고 닫으면 검색이 새로 고쳐지는지, 연결 실패 때 격자의 안내와 두 버튼, 첫 실행 WireGuard의 "저장된 설정" 표시. 실제 앱에서 해 보지 않았다.
 - **이 Mac의 저장 상태**(2026-11-04 발견): 키체인 항목(`mullvad-account`·`mullvad-device`·`e621-account`·`wireguard-config`)과 설정·캐시 폴더가 없다. 원인은 모른다. 개발 앱으로 e621을 보려면 설정 화면에서 Mullvad 로그인(또는 `.conf` 가져오기)과 e621 로그인을 다시 해야 한다. Mullvad 계정에는 옛 기기 `divine condor`가 남아 있을 수 있다(로그인할 때 남은 기기는 키체인에 있어야 지운다).
 - **종합 검토의 다음 작은 판 항목**: M1 무효가 된 Mullvad 기기의 끝없는 재시도, M3·M4 전부 블랙리스트인 검색의 자동 받기와 잠금, M5 풀·세트 열기 순서, M6 계정 변경 뒤 인기·풀·세트 갱신, M8 즐겨찾기 새로 고침, M10 뷰어 포커스, M12 기본 우클릭 메뉴, M13 Windows 자격 증명 크기, 접근성(대비·포커스), 보안 보강(Mullvad 클라이언트 프록시, SOCKS 인증, 서명을 빌드와 분리, 웹뷰 이동 막기, 불변 릴리스·태그 규칙), 그리고 정리(큰 파일 나누기, 틀린 주석, 테스트 빈틈, Dependabot·cargo-deny·SECURITY.md).
@@ -174,6 +175,7 @@
 
 ## 다음 할 일
 
+1. **0.1.3 배포(급함)**: v0.1.2 설치본은 2026-11-13부터 검색·인기·즐겨찾기·풀·세트가 모두 오류다. 새 형식 수정을 커밋하고 개발 앱에서 화면을 확인한 뒤 아래 배포 순서대로 낸다. 앱 안 업데이트 확인(아래 2번)을 이때 함께 한다(업데이트 확인은 게시물 API를 쓰지 않아 v0.1.2에서도 된다).
 1. **공개한 설치본 확인**: v0.1.0(새 키), v0.1.1, v0.1.2 모두 설치해 보지 않고 공개했다(아래 명령의 `v0.1.1`은 `v0.1.2`로 바꿔 쓴다). 첫 v0.1.0을 설치해 둔 기기가 있으면 v0.1.1을 덮어 설치한다(옛 키를 믿어 업데이트를 받지 못한다). DMG(`gh release download v0.1.1 --repo nyabi-gh/Tailgate --pattern "*.dmg" --dir ~/Downloads`)를 README대로 설치하고, Windows는 `--pattern "*-setup.exe"`로 받아 설치한다(SmartScreen 경고, 자격 증명 관리자). 설치한 Windows 앱에서 터널(WireGuard·Mullvad)·동영상 재생도 본다.
 2. **앱 안 업데이트 확인**: 새 키 v0.1.0이나 v0.1.1 설치본이 있으면 v0.1.2로 업데이트해 본다. 없으면 0.1.3 때 확인한다. 두 플랫폼에서 업데이트가 받아지고 설치되는지, macOS는 ad-hoc 서명이라 업데이트 뒤 키체인 허용 창이 다시 뜨는지, Windows는 NSIS `passive` 설치가 앱을 닫고 진행하는지. 다음 릴리스부터는 공개 전에 초안을 설치하고 업데이트를 끝까지 해 본다. 서명 키(`~/.tauri/tailgate.key`와 암호)를 서로 다른 두 곳에 백업하고 복원을 시험한다(더미 파일 서명·검증). 배포 순서: `src-tauri/Cargo.toml` 버전을 올리고 `cargo check`(`src-tauri`)로 `Cargo.lock`의 `tailgate` 버전도 갱신해 둘을 함께 커밋·푸시(lock을 빠뜨리면 CI의 `--locked`가 실패한다), CI 통과 뒤 `git tag -a v<버전>`(메시지가 릴리스 노트이자 업데이트 시트의 노트) → `git push origin v<버전>` → 초안 확인 → `gh release edit v<버전> --repo nyabi-gh/Tailgate --draft=false`(공개해야 `releases/latest`에 잡힌다). 버전 번호는 다시 쓰지 않는다.
 3. 사용자 확인(위 "남은 일" 첫 항목).
@@ -181,7 +183,7 @@
 
 ## 개발 메모
 
-- API 수동 점검: `cd src-tauri && cargo run --example api_probe -- [태그]`. 앱과 같은 경로(저장된 기기면 터널)로 me, 검색 2페이지, `order:score`, WebM, 삭제된 게시물, 단일 게시물, 자동완성을 부른다. e621 응답 구조가 바뀌면 여기서 디코딩 오류로 드러난다.
+- API 수동 점검: `cd src-tauri && cargo run --example api_probe -- [태그]`. 앱과 같은 경로(저장된 기기면 터널)로 me, 검색 2페이지, `order:score`, WebM, 삭제된 게시물, 단일 게시물, 자동완성을 부른다. e621 응답 구조가 바뀌면 여기서 디코딩 오류로 드러난다. 픽스처는 실제 응답이라 e621이 바뀌어도 `cargo test`는 통과한다. 배포 전에 이것을 돌리고 e621ng 커밋(`gh api repos/e621ng/e621ng/commits`)을 훑는다.
 - 터널 수동 점검: `cd src-tauri && cargo run --example tunnel_probe` (`--forget`은 Mullvad 기기 등록 해제, `PROBE_DOWNLOAD=<url>`은 속도 측정, `--serve`는 SOCKS5를 열어 두어 `curl -x socks5h://<주소>`로 터널을 쓸 수 있다). 출력의 "tunnel up in"은 이제 핸드셰이크까지 포함한다. 디버그·릴리스 실행 파일은 각각 처음 키체인을 읽을 때 허용 창이 뜬다.
 - Mullvad 계정 번호는 사용자가 직접 넣는다: `security add-generic-password -s pro.tb.nyabi.Tailgate -a mullvad-account -w`. 이 계정에는 `divine condor` 기기가 등록되어 있었다(2026-11-04 이 Mac의 키체인에서는 사라짐, "남은 일").
 - 키체인 항목을 다른 실행 파일이 만들었거나 다시 빌드한 디버그 실행 파일이 읽으면 macOS가 접근 허용 창을 띄운다. 창이 떠 있는 동안 앱은 `connecting`으로 기다리고, 거부하면 `failed`(`credentialStore`)로 막힌 채 남는다.
