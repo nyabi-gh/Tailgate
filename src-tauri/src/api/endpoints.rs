@@ -6,8 +6,7 @@ use super::{
     Api, ApiError, Credentials,
     models::{
         CommentPage, Favorited, Pool, PoolCategory, Post, PostSet, RawComment, RawComments,
-        RawPool, RawPostEnvelope, RawPostSet, RawPosts, RawSetsForSelect, RawUser, TagSuggestion,
-        User, Voted,
+        RawPool, RawPost, RawPostSet, RawSetsForSelect, RawUser, TagSuggestion, User, Voted,
     },
 };
 
@@ -16,11 +15,23 @@ pub const PAGE_SIZE: usize = 100;
 pub const LIST_PAGE_SIZE: usize = 75;
 /// `page=<number>` answers 410 past this page; only `page=b<id>` goes deeper.
 const MAX_PAGE_NUMBER: u32 = 750;
+/// Asks for tags by category; without it e621 sends them as one list.
+const EXTENDED: (&str, &str) = ("mode", "extended");
 
 impl Api {
     pub async fn post(&self, id: u64) -> Result<Post, ApiError> {
-        let raw: RawPostEnvelope = self.client.get(&format!("posts/{id}.json"), &[]).await?;
-        Ok(raw.post.into())
+        let raw: RawPost = self
+            .client
+            .get(&format!("posts/{id}.json"), &[EXTENDED])
+            .await?;
+        Ok(raw.into())
+    }
+
+    /// A post list from `path`, which answers in the post format.
+    async fn post_list(&self, path: &str, query: &[(&str, &str)]) -> Result<Vec<Post>, ApiError> {
+        let query: Vec<_> = query.iter().copied().chain([EXTENDED]).collect();
+        let raw: Vec<RawPost> = self.client.get(path, &query).await?;
+        Ok(raw.into_iter().map(Post::from).collect())
     }
 
     /// `None` when the request is anonymous.
@@ -74,11 +85,8 @@ impl Api {
     /// The signed-in user's favorites, most recently added first.
     async fn favorites(&self, page: u32) -> Result<Vec<Post>, ApiError> {
         let (limit, page) = (PAGE_SIZE.to_string(), page.to_string());
-        let raw: RawPosts = self
-            .client
-            .get("favorites.json", &[("limit", &limit), ("page", &page)])
-            .await?;
-        Ok(raw.posts.into_iter().map(Post::from).collect())
+        self.post_list("favorites.json", &[("limit", &limit), ("page", &page)])
+            .await
     }
 
     pub async fn pools(&self, query: &PoolQuery, page: u32) -> Result<Vec<Pool>, ApiError> {
@@ -211,35 +219,24 @@ impl Api {
             return Ok(Vec::new());
         }
         let (tags, limit) = (format!("id:{}", join_ids(ids)), ids.len().to_string());
-        let raw: RawPosts = self
-            .client
-            .get("posts.json", &[("tags", &tags), ("limit", &limit)])
+        let posts = self
+            .post_list("posts.json", &[("tags", &tags), ("limit", &limit)])
             .await?;
         // e621 answers newest first, whatever the order asked for.
-        let mut found: HashMap<u64, Post> = raw
-            .posts
-            .into_iter()
-            .map(|post| {
-                let post = Post::from(post);
-                (post.id, post)
-            })
-            .collect();
+        let mut found: HashMap<u64, Post> = posts.into_iter().map(|post| (post.id, post)).collect();
         Ok(ids.iter().filter_map(|id| found.remove(id)).collect())
     }
 
     async fn popular(&self, popular: &Popular) -> Result<Vec<Post>, ApiError> {
-        let raw: RawPosts = self
-            .client
-            .get(
-                "popular.json",
-                &[
-                    ("date", &popular.date),
-                    ("scale", popular.scale.as_str()),
-                    ("time_zone", &popular.time_zone),
-                ],
-            )
-            .await?;
-        Ok(raw.posts.into_iter().map(Post::from).collect())
+        self.post_list(
+            "popular.json",
+            &[
+                ("date", &popular.date),
+                ("scale", popular.scale.as_str()),
+                ("time_zone", &popular.time_zone),
+            ],
+        )
+        .await
     }
 
     async fn posts(&self, tags: &str, page: Option<&str>) -> Result<Vec<Post>, ApiError> {
@@ -248,8 +245,7 @@ impl Api {
         if let Some(page) = page {
             query.push(("page", page));
         }
-        let raw: RawPosts = self.client.get("posts.json", &query).await?;
-        Ok(raw.posts.into_iter().map(Post::from).collect())
+        self.post_list("posts.json", &query).await
     }
 }
 

@@ -555,7 +555,7 @@ mod tests {
     fn page(ids: impl IntoIterator<Item = u64>) -> Value {
         let fixture: Value =
             serde_json::from_str(include_str!("../tests/fixtures/posts_webm.json")).unwrap();
-        let post = &fixture["posts"][0];
+        let post = &fixture[0];
         let posts: Vec<Value> = ids
             .into_iter()
             .map(|id| {
@@ -564,7 +564,7 @@ mod tests {
                 post
             })
             .collect();
-        json!({ "posts": posts })
+        json!(posts)
     }
 
     /// An anonymous `/users/me` reply carrying `blacklist`.
@@ -617,7 +617,10 @@ mod tests {
         let requests: Vec<String> = std::iter::from_fn(|| received.try_recv().ok())
             .map(|request| request.target)
             .collect();
-        assert_eq!(requests[2], "/posts.json?tags=id%3A10%2C20&limit=2");
+        assert_eq!(
+            requests[2],
+            "/posts.json?tags=id%3A10%2C20&limit=2&mode=extended"
+        );
     }
 
     fn set(id: u64, name: &str, public: bool, post_ids: &[u64]) -> Value {

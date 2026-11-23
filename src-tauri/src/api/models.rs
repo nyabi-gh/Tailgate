@@ -197,28 +197,17 @@ pub struct Voted {
     pub our_score: i8,
 }
 
-#[derive(Deserialize)]
-pub(super) struct RawPosts {
-    pub posts: Vec<RawPost>,
-}
-
-#[derive(Deserialize)]
-pub(super) struct RawPostEnvelope {
-    pub post: RawPost,
-}
-
+/// A post in e621's post format as requested with `mode=extended`, the only one with tags by
+/// category. The format without a `?v1=true` param since 2026-11-13 (e621ng #2759).
 #[derive(Deserialize)]
 pub(super) struct RawPost {
     id: u64,
     created_at: String,
-    file: RawFile,
-    preview: RawImage,
-    sample: RawSample,
-    score: Score,
+    files: RawFiles,
+    stats: RawStats,
     tags: Tags,
     flags: RawFlags,
     rating: Rating,
-    fav_count: u64,
     #[serde(default)]
     sources: Vec<String>,
     #[serde(default)]
@@ -229,40 +218,53 @@ pub(super) struct RawPost {
     uploader_name: Option<String>,
     #[serde(default)]
     description: String,
-    comment_count: u64,
-    is_favorited: bool,
-    vote: i8,
-    duration: Option<f64>,
 }
 
 #[derive(Deserialize)]
-struct RawFile {
-    width: u32,
-    height: u32,
+struct RawFiles {
+    meta: RawFileMeta,
+    original: RawOriginal,
+    preview: RawImage,
+    /// Carries the original's URLs when the post has no sample.
+    sample: RawImage,
+    /// Only on video posts.
+    #[serde(default)]
+    video: RawAlternates,
+}
+
+#[derive(Deserialize)]
+struct RawFileMeta {
+    md5: String,
     ext: String,
     size: u64,
-    md5: String,
+    duration: Option<f64>,
+    has_sample: bool,
+}
+
+#[derive(Deserialize)]
+struct RawOriginal {
+    width: u32,
+    height: u32,
     url: Option<String>,
 }
 
+/// The JPEG is the file the legacy format named `url`; the WebP is left unused.
 #[derive(Deserialize)]
 struct RawImage {
     width: u32,
     height: u32,
-    url: Option<String>,
+    jpg: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct RawSample {
-    has: bool,
-    width: u32,
-    height: u32,
-    url: Option<String>,
-    #[serde(default)]
-    alternates: RawAlternates,
+struct RawStats {
+    score: Score,
+    fav_count: u64,
+    is_favorited: bool,
+    vote: i8,
+    comment_count: u64,
 }
 
-/// `{}` for posts without video encodings.
 #[derive(Default, Deserialize)]
 struct RawAlternates {
     original: Option<RawVideo>,
@@ -304,11 +306,18 @@ pub(super) struct RawUser {
 
 impl From<RawPost> for Post {
     fn from(raw: RawPost) -> Self {
+        let RawFiles {
+            meta,
+            original: file,
+            preview,
+            sample,
+            video,
+        } = raw.files;
         let RawAlternates {
             original,
             mut variants,
             mut samples,
-        } = raw.sample.alternates;
+        } = video;
         let video = Video {
             p720: samples.remove("720p").and_then(RawVideo::source),
             p480: samples.remove("480p").and_then(RawVideo::source),
@@ -319,11 +328,11 @@ impl From<RawPost> for Post {
             id: raw.id,
             created_at: raw.created_at,
             rating: raw.rating,
-            score: raw.score,
-            fav_count: raw.fav_count,
-            is_favorited: raw.is_favorited,
-            vote: raw.vote,
-            comment_count: raw.comment_count,
+            score: raw.stats.score,
+            fav_count: raw.stats.fav_count,
+            is_favorited: raw.stats.is_favorited,
+            vote: raw.stats.vote,
+            comment_count: raw.stats.comment_count,
             deleted: raw.flags.deleted,
             pending: raw.flags.pending,
             flagged: raw.flags.flagged,
@@ -336,27 +345,29 @@ impl From<RawPost> for Post {
             pools: raw.pools,
             parent_id: raw.relationships.parent_id,
             children: raw.relationships.children,
-            duration: raw.duration,
+            duration: meta.duration,
             tags: raw.tags,
             file: File {
-                ext: raw.file.ext,
-                width: raw.file.width,
-                height: raw.file.height,
-                size: raw.file.size,
-                md5: raw.file.md5,
-                url: raw.file.url,
+                ext: meta.ext,
+                width: file.width,
+                height: file.height,
+                size: meta.size,
+                md5: meta.md5,
+                url: file.url,
             },
-            preview: Image {
-                width: raw.preview.width,
-                height: raw.preview.height,
-                url: raw.preview.url,
-            },
-            sample: raw.sample.has.then_some(Image {
-                width: raw.sample.width,
-                height: raw.sample.height,
-                url: raw.sample.url,
-            }),
+            preview: preview.into(),
+            sample: meta.has_sample.then(|| sample.into()),
             video: (video != Video::default()).then_some(video),
+        }
+    }
+}
+
+impl From<RawImage> for Image {
+    fn from(raw: RawImage) -> Self {
+        Self {
+            width: raw.width,
+            height: raw.height,
+            url: raw.jpg,
         }
     }
 }
@@ -548,8 +559,8 @@ impl RawComments {
 /// Posts from a `/posts.json` response, for tests elsewhere that start from real responses.
 #[cfg(test)]
 pub(crate) fn decode_posts(json: &str) -> Vec<Post> {
-    let raw: RawPosts = serde_json::from_str(json).unwrap();
-    raw.posts.into_iter().map(Post::from).collect()
+    let raw: Vec<RawPost> = serde_json::from_str(json).unwrap();
+    raw.into_iter().map(Post::from).collect()
 }
 
 #[cfg(test)]
@@ -557,8 +568,7 @@ mod tests {
     use super::*;
 
     fn posts(fixture: &str) -> Vec<Post> {
-        let raw: RawPosts = serde_json::from_str(fixture).unwrap();
-        raw.posts.into_iter().map(Post::from).collect()
+        decode_posts(fixture)
     }
 
     #[test]
@@ -632,6 +642,13 @@ mod tests {
                 .iter()
                 .all(|post| post.file.ext == "gif" && post.video.is_none())
         );
+    }
+
+    #[test]
+    fn has_no_sample_when_e621_fills_it_with_the_original() {
+        let posts = posts(include_str!("../../tests/fixtures/posts_gif.json"));
+        assert!(posts[0].file.url.is_some());
+        assert_eq!(posts[0].sample, None);
     }
 
     #[test]

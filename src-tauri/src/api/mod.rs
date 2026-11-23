@@ -120,7 +120,7 @@ mod tests {
     fn posts(ids: impl IntoIterator<Item = u64>) -> Value {
         let fixture: Value =
             serde_json::from_str(include_str!("../../tests/fixtures/posts_image.json")).unwrap();
-        let post = &fixture["posts"][0];
+        let post = &fixture[0];
         let posts: Vec<Value> = ids
             .into_iter()
             .map(|id| {
@@ -129,7 +129,7 @@ mod tests {
                 post
             })
             .collect();
-        json!({ "posts": posts })
+        json!(posts)
     }
 
     fn drain(received: &mut mpsc::UnboundedReceiver<Received>) -> Vec<Received> {
@@ -239,10 +239,23 @@ mod tests {
 
         let requests = drain(&mut received);
         assert_eq!(requests.len(), 2);
-        assert_eq!(requests[0].target, "/posts.json?tags=wolf+solo&limit=100");
+        assert_eq!(
+            requests[0].target,
+            "/posts.json?tags=wolf+solo&limit=100&mode=extended"
+        );
         assert_eq!(
             requests[1].target,
-            "/posts.json?tags=wolf+solo&limit=100&page=b101"
+            "/posts.json?tags=wolf+solo&limit=100&page=b101&mode=extended"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn reads_a_single_post_without_a_wrapper() {
+        let (api, mut received) = fake_api(vec![ok(&posts([7])[0])]).await;
+        assert_eq!(api.post(7).await.unwrap().id, 7);
+        assert_eq!(
+            drain(&mut received)[0].target,
+            "/posts/7.json?mode=extended"
         );
     }
 
@@ -255,8 +268,14 @@ mod tests {
         search.next_page(&api).await.unwrap();
         search.next_page(&api).await.unwrap();
         let requests = drain(&mut received);
-        assert_eq!(requests[0].target, "/posts.json?tags=&limit=100");
-        assert_eq!(requests[1].target, "/posts.json?tags=&limit=100&page=b101");
+        assert_eq!(
+            requests[0].target,
+            "/posts.json?tags=&limit=100&mode=extended"
+        );
+        assert_eq!(
+            requests[1].target,
+            "/posts.json?tags=&limit=100&page=b101&mode=extended"
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -269,11 +288,11 @@ mod tests {
         let requests = drain(&mut received);
         assert_eq!(
             requests[0].target,
-            "/posts.json?tags=wolf+Order%3Ascore&limit=100&page=1"
+            "/posts.json?tags=wolf+Order%3Ascore&limit=100&page=1&mode=extended"
         );
         assert_eq!(
             requests[1].target,
-            "/posts.json?tags=wolf+Order%3Ascore&limit=100&page=2"
+            "/posts.json?tags=wolf+Order%3Ascore&limit=100&page=2&mode=extended"
         );
     }
 
@@ -295,7 +314,7 @@ mod tests {
         assert_eq!(requests.len(), 1);
         assert_eq!(
             requests[0].target,
-            "/popular.json?date=2026-10-22&scale=week&time_zone=Asia%2FSeoul"
+            "/popular.json?date=2026-10-22&scale=week&time_zone=Asia%2FSeoul&mode=extended"
         );
     }
 
@@ -322,13 +341,21 @@ mod tests {
                 .target
                 .starts_with("/posts.json?tags=id%3A1%2C2%2C3%2C")
         );
-        assert!(requests[0].target.ends_with("%2C100&limit=100"));
+        assert!(
+            requests[0]
+                .target
+                .ends_with("%2C100&limit=100&mode=extended")
+        );
         assert!(
             requests[1]
                 .target
                 .starts_with("/posts.json?tags=id%3A101%2C")
         );
-        assert!(requests[1].target.ends_with("%2C150&limit=50"));
+        assert!(
+            requests[1]
+                .target
+                .ends_with("%2C150&limit=50&mode=extended")
+        );
     }
 
     #[tokio::test]
@@ -453,7 +480,11 @@ mod tests {
         search.skip_to_page(750);
         search.next_page(&api).await.unwrap();
         assert!(search.is_done());
-        assert!(drain(&mut received)[0].target.ends_with("&page=750"));
+        assert!(
+            drain(&mut received)[0]
+                .target
+                .ends_with("&page=750&mode=extended")
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -519,8 +550,8 @@ mod tests {
         assert_eq!(
             targets,
             [
-                "/favorites.json?limit=100&page=1",
-                "/favorites.json?limit=100&page=2"
+                "/favorites.json?limit=100&page=1&mode=extended",
+                "/favorites.json?limit=100&page=2&mode=extended"
             ]
         );
     }

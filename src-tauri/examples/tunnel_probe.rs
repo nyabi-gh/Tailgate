@@ -111,17 +111,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let status = response.status();
     let body: serde_json::Value = response.json().await?;
     println!("e621 API {status} in {:?}", started.elapsed());
-    let posts = body["posts"].as_array().cloned().unwrap_or_default();
+    let posts = body.as_array().cloned().unwrap_or_default();
     for post in &posts {
+        let files = &post["files"];
         println!(
             "  post {} {}x{} {}",
-            post["id"], post["file"]["width"], post["file"]["height"], post["file"]["ext"]
+            post["id"],
+            files["original"]["width"],
+            files["original"]["height"],
+            files["meta"]["ext"]
         );
     }
 
     if let Some(url) = posts
         .iter()
-        .filter_map(|post| post["file"]["url"].as_str())
+        .filter_map(|post| post["files"]["original"]["url"].as_str())
         .next()
     {
         let started = Instant::now();

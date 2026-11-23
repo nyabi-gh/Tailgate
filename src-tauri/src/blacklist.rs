@@ -391,13 +391,22 @@ fn uploader(post: &Post) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::models::decode_posts;
+    use crate::api::models::{Score, decode_posts};
 
     /// The WebM fixture post: rating s, 1080x1920 webm of 6662762 bytes, score 2, 1 favorite,
     /// pending, uploaded by translator8skunk (2262283), tags such as `rabbit`, `frog`, `yoga`
     /// and `natural_habitok`.
     fn post() -> Post {
-        decode_posts(include_str!("../tests/fixtures/posts_webm.json")).remove(0)
+        let mut post = decode_posts(include_str!("../tests/fixtures/posts_webm.json")).remove(0);
+        // These drift on e621, so a refreshed fixture would change them.
+        post.score = Score {
+            up: 2,
+            down: 0,
+            total: 2,
+        };
+        post.fav_count = 1;
+        post.pending = true;
+        post
     }
 
     fn hides(blacklist: &str) -> bool {
